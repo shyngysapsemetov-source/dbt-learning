@@ -1,5 +1,25 @@
-
+# dbt artifacts
 target/
 dbt_modules/
+dbt_packages/
 logs/
 dbt_internal_packages/
+
+# Credentials — never commit these
+profiles.yml
+.env
+*.pem
+*.p8
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
