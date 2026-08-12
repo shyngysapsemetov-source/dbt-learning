@@ -1,0 +1,22 @@
+# Template for ~/.dbt/profiles.yml — copy there, do NOT commit the filled-in version.
+# The profile name must match `profile:` in dbt_project.yml (currently `default`).
+# Values come from environment variables so no secret ever lands in git.
+#
+#   Windows (PowerShell):  $env:SNOWFLAKE_PASSWORD = "..."
+#   Windows (bash):        export SNOWFLAKE_PASSWORD="..."
+#
+# Verify with: dbt debug
+
+default:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'transformer') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'analytics') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'transforming') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'dbt_learning') }}"
+      threads: 8
