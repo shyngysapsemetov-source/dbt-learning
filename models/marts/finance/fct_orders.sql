@@ -5,7 +5,7 @@ with orders as (
 ),
 
 payments as (
-    select * from {{ref('stg_stripe_payments')}}
+    select * from {{ref('stg_stripe_payment')}}
 ),
 
 order_payments as (

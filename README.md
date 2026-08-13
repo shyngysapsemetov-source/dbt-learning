@@ -39,9 +39,9 @@ Current models:
 
 | Model | Layer | Materialization | Description |
 |---|---|---|---|
-| `stg_js_customers` | staging | view | Customers from `raw.jaffle_shop.customers`, renamed |
-| `stg_js_orders` | staging | view | Orders from `raw.jaffle_shop.orders`, renamed |
-| `stg_stripe_payments` | staging | view | Stripe payments, renamed and converted from cents to dollars |
+| `stg_js_customers` | staging | view | Customers from the `jaffle_shop` source, renamed |
+| `stg_js_orders` | staging | view | Orders from the `jaffle_shop` source, renamed |
+| `stg_stripe_payment` | staging | view | Stripe payments from the `stripe` source, renamed and converted from cents to dollars |
 | `fct_orders` | marts/finance | table | Order fact with successful payment amount per order |
 | `dim_customers` | marts | table | Customer dimension: order dates, order count, lifetime value |
 
