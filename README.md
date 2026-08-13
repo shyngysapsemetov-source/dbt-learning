@@ -12,7 +12,7 @@ Every practical exercise is committed here, so the history doubles as a learning
 
 | # | Course | Status | Notes |
 |---|--------|--------|-------|
-| 1 | dbt Fundamentals | 🟡 In progress | [notes](notes/01-dbt-fundamentals.md) |
+| 1 | dbt Fundamentals | 🟢 Complete | [notes](notes/01-dbt-fundamentals.md) |
 | 2 | Jinja, Macros & Packages | ⚪ Not started | [notes](notes/02-jinja-macros-packages.md) |
 | 3 | Advanced Testing | ⚪ Not started | [notes](notes/03-advanced-testing.md) |
 | 4 | Refactoring SQL for Modularity | ⚪ Not started | [notes](notes/04-refactoring-sql-for-modularity.md) |
@@ -72,5 +72,5 @@ dbt debug                        # check profile + warehouse connection
 dbt build                        # seed + run + test + snapshot, in DAG order
 dbt run --select stg_jaffle_shop_orders+  # a model and everything downstream
 dbt test --select dim_customers
-dbt docs generate && dbt docs serve
+dbt compile --write-catalog      # Fusion: write target/catalog.json, then open the dbt Core index.html viewer
 ```
