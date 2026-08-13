@@ -1,6 +1,6 @@
 with orders as (
 
-    select * from {{ref('stg_js_orders')}}
+    select * from {{ref('stg_jaffle_shop_orders')}}
 
 ),
 
