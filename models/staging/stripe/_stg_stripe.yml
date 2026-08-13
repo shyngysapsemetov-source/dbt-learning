@@ -1,0 +1,21 @@
+models:
+  - name: stg_stripe_payment
+    description: Staged payments data from Stripe.
+    columns:
+      - name: payment_id
+        description: Primary key for payments.
+      
+      - name: order_id
+        description: Unique identifier for orders. Foreign key to map to orders data objects.
+
+      - name: payment_method
+        description: "{{doc('payment_method')}}"
+
+      - name: status
+        description: "{{doc('status')}}"
+
+      - name: amount
+        description: Amount paid in USD.
+
+      - name: created_at
+        description: Date when payment was made.
