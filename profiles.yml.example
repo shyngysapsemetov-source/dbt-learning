@@ -1,9 +1,31 @@
 # Template for ~/.dbt/profiles.yml — copy there, do NOT commit the filled-in version.
 # The profile name must match `profile:` in dbt_project.yml (currently `default`).
-# Values come from environment variables so no secret ever lands in git.
 #
-#   Windows (PowerShell):  $env:SNOWFLAKE_PASSWORD = "..."
-#   Windows (bash):        export SNOWFLAKE_PASSWORD="..."
+# AUTH: key-pair, not password. Snowflake stopped supporting password auth for
+# connections on 2026-08-31. dbt Cloud's own guidance is key-pair for deployment
+# environments and OAuth for development ones; key-pair works for both and is the
+# only option for an unattended scheduled job, so this template uses it.
+#
+# One-time key setup (run these yourself — the passphrase must not land in a
+# transcript or shell history):
+#
+#   mkdir -p ~/.dbt/keys
+#   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.dbt/keys/snowflake_dbt_key.p8
+#   openssl rsa -in ~/.dbt/keys/snowflake_dbt_key.p8 -pubout -out ~/.dbt/keys/snowflake_dbt_key.pub
+#   chmod 600 ~/.dbt/keys/snowflake_dbt_key.p8
+#
+# Then register the PUBLIC key in Snowflake (paste the base64 body only — strip the
+# -----BEGIN/END PUBLIC KEY----- lines and all newlines):
+#
+#   ALTER USER <your_user> SET RSA_PUBLIC_KEY='MIIBIjANBgkq...';
+#   DESC USER <your_user>;   -- confirm RSA_PUBLIC_KEY_FP is now set
+#
+# Keys live in ~/.dbt/keys, deliberately OUTSIDE this repo: it is public, and a
+# leaked private key is game over. .gitignore covers *.p8/*.pem/*.key as a second
+# line of defence, not the first.
+#
+#   Windows (PowerShell):  $env:SNOWFLAKE_PRIVATE_KEY_PASSPHRASE = "..."
+#   Windows (bash):        export SNOWFLAKE_PRIVATE_KEY_PASSPHRASE="..."
 #
 # Verify with: dbt debug
 
@@ -14,7 +36,15 @@ default:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+
+      # Key-pair auth. Drop private_key_passphrase if the key is unencrypted.
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE') }}"
+
+      # Interactive alternative — opens a browser, so it CANNOT be used by a
+      # scheduled job. Comment out the two private_key_* lines to use this.
+      # authenticator: externalbrowser
+
       role: "{{ env_var('SNOWFLAKE_ROLE', 'transformer') }}"
       database: "{{ env_var('SNOWFLAKE_DATABASE', 'analytics') }}"
       warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'transforming') }}"

@@ -52,11 +52,14 @@ Requires a Snowflake account with the `raw.jaffle_shop` course dataset.
 ```bash
 # 1. Credentials — copy the template to ~/.dbt/profiles.yml and set env vars.
 #    profiles.yml is gitignored; no secret belongs in this repo.
+#    Auth is key-pair: Snowflake dropped password auth on 2026-08-31.
+#    See profiles.yml.example for the one-time openssl + ALTER USER key setup.
 cp profiles.yml.example ~/.dbt/profiles.yml
 
 export SNOWFLAKE_ACCOUNT="..."
 export SNOWFLAKE_USER="..."
-export SNOWFLAKE_PASSWORD="..."
+export SNOWFLAKE_PRIVATE_KEY_PATH="$HOME/.dbt/keys/snowflake_dbt_key.p8"
+export SNOWFLAKE_PRIVATE_KEY_PASSPHRASE="..."
 
 # 2. Verify the connection
 dbt debug
