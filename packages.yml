@@ -1,0 +1,9 @@
+# Project dependencies. `dbt deps` installs these into `dbt_packages/` (gitignored)
+# and records the resolved versions in `package-lock.yml` (committed), so every
+# environment — your laptop and dbt Cloud alike — installs identical versions.
+
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.4.1
+  - package: dbt-labs/codegen
+    version: 0.14.1
