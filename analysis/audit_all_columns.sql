@@ -1,12 +1,12 @@
 -- Compare column values: legacy customer_orders vs fct_customer_orders
 -- Run with:  dbt compile --select audit_all_columns
 -- then paste target/compiled/.../audit_all_columns.sql into Snowflake.
+--
+-- The legacy query lives in the project as models/legacy/customer_orders_legacy.sql,
+-- so ref() resolves it: no adapter.get_relation, no hardcoded schema, and no need for
+-- an "if execute" guard, because ref() resolves at parse time in every environment.
 
-{% set old_relation = adapter.get_relation(
-      database = target.database,
-      schema = "dbt_learning",
-      identifier = "customer_orders_legacy"
-) -%}
+{% set old_relation = ref('customer_orders_legacy') %}
 
 {% set dbt_relation = ref('fct_customer_orders') %}
 
