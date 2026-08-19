@@ -38,5 +38,7 @@ models:
       +materialized: view
     marts:
       +materialized: table
-
-    
+    # The pre-refactor query, kept as a stable baseline for the audit analyses.
+    # A table, not a view, so auditing doesn't re-run the legacy SQL every time.
+    legacy:
+      +materialized: table
