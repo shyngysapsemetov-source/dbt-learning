@@ -1,0 +1,179 @@
+models:
+  - name: dim_customers
+    description: >
+      Customer dimension, one row per customer in the jaffle shop app.
+      Customers with no orders are kept, with zeroed order counts and lifetime value.
+    columns:
+      - name: customer_id
+        description: Primary key for customers.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_first_name
+        description: First Name of the customer.
+
+      - name: customer_last_name
+        description: Last Name of the customer.
+
+      - name: first_order_date
+        description: Date of the customer's earliest order. Null when they have never ordered.
+
+      - name: most_recent_order_date
+        description: Date of the customer's latest order. Null when they have never ordered.
+
+      - name: number_of_orders
+        description: Count of orders placed by the customer. Zero when they have never ordered.
+        data_tests:
+        - not_null
+
+      - name: lifetime_value
+        description: >
+          Sum of non-failed payment amounts across all of the customer's orders, in USD.
+          Zero when they have never ordered.
+        data_tests:
+        - not_null
+
+  - name: fct_orders
+    description: >
+      Order fact, one row per order, with payment totals and the customer-level
+      sequencing and lifetime-value window calculations ported from the legacy query.
+    columns:
+      - name: order_id
+        description: Primary key for orders.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_id
+        description: Unique identifier for a customer. Foreign key to dim_customers.
+        data_tests:
+        - not_null
+        - relationships:
+            arguments:
+              to: ref('stg_jaffle_shop_customers')
+              field: customer_id
+
+      - name: order_placed_at
+        description: Date when order was placed.
+        data_tests:
+        - not_null
+
+      - name: order_status
+        description: "{{doc('order_status')}}"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['placed', 'shipped', 'completed', 'returned', 'return_pending']
+
+      - name: total_order_amount
+        description: >
+          Sum of non-failed payment amounts for this order, in USD.
+          Null when the order has no non-failed payment — deliberately not coalesced,
+          so it matches the legacy query it replaces.
+
+      - name: payment_finalized_date
+        description: Date of the latest non-failed payment on this order. Null when there is none.
+
+      - name: transaction_seq
+        description: Sequence of this order across all orders in the system, ordered by order_id.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_sales_seq
+        description: Sequence of this order within the customer's own orders, ordered by order_id.
+        data_tests:
+        - not_null
+
+      - name: nvsr
+        description: >
+          Whether this order is the customer's first ('new') or a later one ('return'),
+          ranked by order date then order_id.
+        data_tests:
+        - not_null
+        - accepted_values:
+            arguments:
+              values: ['new', 'return']
+
+      # fdos = first date of sale
+      - name: fdos
+        description: Date of the customer's first order, repeated on every one of their orders.
+        data_tests:
+        - not_null
+
+      - name: running_clv
+        description: >
+          Customer lifetime value as of this order — a running sum of total_order_amount
+          over the customer's orders, ordered by order date then order_id.
+
+  - name: fct_customer_orders
+    description: >
+      Order fact enriched with customer attributes. This is the modular replacement for
+      the legacy customer_orders query, and is what the audit analyses compare against.
+    columns:
+      - name: order_id
+        description: Primary key for orders.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_id
+        description: Unique identifier for a customer. Foreign key to dim_customers.
+        data_tests:
+        - not_null
+        - relationships:
+            arguments:
+              to: ref('dim_customers')
+              field: customer_id
+
+      - name: order_placed_at
+        description: Date when order was placed.
+        data_tests:
+        - not_null
+
+      - name: order_status
+        description: "{{doc('order_status')}}"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['placed', 'shipped', 'completed', 'returned', 'return_pending']
+
+      - name: total_amount_paid
+        description: Sum of non-failed payment amounts for this order, in USD. Null when there is none.
+
+      - name: payment_finalized_date
+        description: Date of the latest non-failed payment on this order. Null when there is none.
+
+      - name: customer_first_name
+        description: First Name of the customer.
+
+      - name: customer_last_name
+        description: Last Name of the customer.
+
+      - name: transaction_seq
+        description: Sequence of this order across all orders in the system, ordered by order_id.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_sales_seq
+        description: Sequence of this order within the customer's own orders, ordered by order_id.
+        data_tests:
+        - not_null
+
+      - name: nvsr
+        description: Whether this order is the customer's first ('new') or a later one ('return').
+        data_tests:
+        - not_null
+        - accepted_values:
+            arguments:
+              values: ['new', 'return']
+
+      - name: running_clv
+        description: Customer lifetime value as of this order.
+
+      - name: fdos
+        description: Date of the customer's first order, repeated on every one of their orders.
+        data_tests:
+        - not_null
