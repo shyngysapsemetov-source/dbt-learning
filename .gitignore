@@ -18,6 +18,9 @@ __pycache__/
 .venv/
 venv/
 
+# Local scratch — throwaway files for trying things out, not part of the project
+analysis/test.sql
+
 # OS / editor
 .DS_Store
 Thumbs.db
