@@ -13,12 +13,13 @@ Every practical exercise is committed here, so the history doubles as a learning
 | # | Course | Status | Notes |
 |---|--------|--------|-------|
 | 1 | dbt Fundamentals | 🟢 Complete | [notes](notes/01-dbt-fundamentals.md) |
-| 2 | Jinja, Macros & Packages | ⚪ Not started | [notes](notes/02-jinja-macros-packages.md) |
-| 3 | Advanced Testing | ⚪ Not started | [notes](notes/03-advanced-testing.md) |
-| 4 | Refactoring SQL for Modularity | ⚪ Not started | [notes](notes/04-refactoring-sql-for-modularity.md) |
-| 5 | Analyses, Seeds & Snapshots | ⚪ Not started | [notes](notes/05-analyses-seeds-snapshots.md) |
-| 6 | Advanced Materializations | ⚪ Not started | [notes](notes/06-advanced-materializations.md) |
-| 7 | Certification exam prep | ⚪ Not started | [notes](notes/07-exam-prep.md) |
+| 2 | Materialization Fundamentals | 🟢 Complete | [notes](notes/02-materialization-fundamentals.md) |
+| 3 | Jinja, Macros & Packages | ⚪ Not started | [notes](notes/03-jinja-macros-packages.md) |
+| 4 | Advanced Testing | ⚪ Not started | [notes](notes/04-advanced-testing.md) |
+| 5 | Refactoring SQL for Modularity | 🟢 Complete | [notes](notes/05-refactoring-sql-for-modularity.md) |
+| 6 | Analyses, Seeds & Snapshots | ⚪ Not started | [notes](notes/06-analyses-seeds-snapshots.md) |
+| 7 | Advanced Materializations | ⚪ Not started | [notes](notes/07-advanced-materializations.md) |
+| 8 | Certification exam prep | ⚪ Not started | [notes](notes/08-exam-prep.md) |
 
 Legend: ⚪ not started · 🟡 in progress · 🟢 complete
 
@@ -28,6 +29,9 @@ Legend: ⚪ not started · 🟡 in progress · 🟢 complete
 models/
   staging/    stg_* — 1:1 with source tables, renaming and casting only
   marts/      dim_* / fct_* — business-facing, tested and documented
+  legacy/     pre-refactor queries, kept as audit baselines
+functions/    SQL UDFs, callable with {{ function('name') }}
+analysis/     compiled but never run — audit queries to paste into Snowflake
 seeds/        static CSVs loaded with `dbt seed`
 macros/       reusable Jinja
 tests/        singular tests
@@ -42,8 +46,10 @@ Current models:
 | `stg_jaffle_shop_customers` | staging | view | Customers from the `jaffle_shop` source, renamed |
 | `stg_jaffle_shop_orders` | staging | view | Orders from the `jaffle_shop` source, renamed |
 | `stg_stripe_payment` | staging | view | Stripe payments from the `stripe` source, renamed and converted from cents to dollars |
-| `fct_orders` | marts/finance | table | Order fact with successful payment amount per order |
-| `dim_customers` | marts | table | Customer dimension: order dates, order count, lifetime value |
+| `fct_orders` | marts/dbt_fundamentals | table | Order fact: payment totals per order, plus customer order sequencing and running lifetime value |
+| `dim_customers` | marts/dbt_fundamentals | table | Customer dimension: order dates, order count, lifetime value |
+| `fct_customer_orders` | marts/refactoring_sql | table | Orders enriched with customer attributes — the modular replacement for the legacy query |
+| `customer_orders_legacy` | legacy | table | The pre-refactor query, untouched, as the baseline the audit analyses compare against |
 
 ## Running this locally
 
@@ -75,5 +81,7 @@ dbt debug                        # check profile + warehouse connection
 dbt build                        # seed + run + test + snapshot, in DAG order
 dbt run --select stg_jaffle_shop_orders+  # a model and everything downstream
 dbt test --select dim_customers
+dbt show --inline "select ..."   # ad-hoc query against the warehouse
+dbt compile --select audit_all_columns    # render an audit query for pasting into Snowflake
 dbt compile --write-catalog      # Fusion: write target/catalog.json, then open the dbt Core index.html viewer
 ```

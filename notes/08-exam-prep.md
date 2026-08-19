@@ -1,4 +1,4 @@
-# 07 — Analytics Engineering Certification: Exam Prep
+# 08 — Analytics Engineering Certification: Exam Prep
 
 **Status:** not started
 

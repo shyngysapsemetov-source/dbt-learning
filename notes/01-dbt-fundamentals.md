@@ -1,6 +1,6 @@
 # 01 — dbt Fundamentals
 
-**Status:** in progress
+**Status:** complete
 **Started:** 2026-08-12
 
 ## What this course covers

@@ -1,4 +1,4 @@
-# 02 — Jinja, Macros & Packages
+# 03 — Jinja, Macros & Packages
 
 **Status:** not started
 
