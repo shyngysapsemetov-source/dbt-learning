@@ -7,9 +7,9 @@ models:
         data_tests:
         - unique
         - not_null
-      - name: first_name
+      - name: customer_first_name
         description: First Name of the customer.
-      - name: last_name
+      - name: customer_last_name
         description: Last Name of the customer.
 
   - name: stg_jaffle_shop_orders
@@ -20,7 +20,7 @@ models:
         data_tests:
         - unique
         - not_null
-      - name: status
+      - name: order_status
         description: "{{doc('order_status')}}"
         data_tests:
           - accepted_values:
@@ -34,7 +34,7 @@ models:
               to: ref('stg_jaffle_shop_customers')
               field: customer_id
       
-      - name: order_date
+      - name: order_placed_at
         description: Date when order was placed.
       - name: _etl_loaded_at
         description: Date when row was loaded.
