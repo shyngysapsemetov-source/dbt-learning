@@ -1,0 +1,31 @@
+seeds:
+  - name: employees
+    description: >
+      Jaffle shop employees and the customer account each one orders under.
+      Small, static and hand-maintained, which is exactly what seeds are for —
+      loaded with `dbt seed`. Lets employee orders be excluded from customer metrics.
+    columns:
+      - name: employee_id
+        description: Primary key for employees.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: email
+        description: >
+          Employee's jaffle shop email address. Values must not carry leading whitespace —
+          dbt trims the CSV header but not the values, so a space after the comma in the
+          source file silently breaks every join on this column.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: customer_id
+        description: The customer account this employee orders under. Foreign key to customers.
+        data_tests:
+        - unique
+        - not_null
+        - relationships:
+            arguments:
+              to: ref('stg_jaffle_shop_customers')
+              field: customer_id
