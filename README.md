@@ -20,7 +20,7 @@ Numbered to match the course order in the official
 | 3 | Jinja, Macros, and Packages | ⚪ Not started | [notes](notes/03-jinja-macros-packages.md) |
 | 4 | Materialization Fundamentals | 🟢 Complete | [notes](notes/04-materialization-fundamentals.md) |
 | 5 | Incremental Models | ⚪ Not started | [notes](notes/05-incremental-models.md) |
-| 6 | Snapshots | ⚪ Not started | [notes](notes/06-snapshots.md) |
+| 6 | Snapshots | 🟢 Complete | [notes](notes/06-snapshots.md) |
 | 7 | Analyses and Seeds | 🟢 Complete | [notes](notes/07-analyses-and-seeds.md) |
 | 8 | Advanced Testing | ⚪ Not started | [notes](notes/08-advanced-testing.md) |
 | 9 | Advanced Deployment | ⚪ Not started | [notes](notes/09-advanced-deployment.md) |
@@ -36,7 +36,7 @@ Standalone videos on the path, outside the numbered courses:
 
 Legend: ⚪ not started · 🟡 in progress · 🟢 complete
 
-**Remaining:** 7 of 11 courses — Jinja/Macros/Packages, Incremental Models, Snapshots,
+**Remaining:** 6 of 11 courses — Jinja/Macros/Packages, Incremental Models,
 Advanced Testing, Advanced Deployment, Exposures, dbt Mesh — then the exam.
 
 ## What's in here
@@ -76,6 +76,15 @@ Seeds:
 | Seed | Description |
 |---|---|
 | `employees` | Employee emails and the customer account each one orders under |
+
+Snapshots:
+
+| Snapshot | Strategy | Description |
+|---|---|---|
+| `orders_snapshot` | `check` | SCD Type 2 history of `raw.jaffle_shop.orders`, preserving each order's status transitions that the source overwrites in place |
+
+Materializes to `analytics.dbt_learning_snapshots.orders_snapshot` — a custom
+`schema:` is appended to the target schema, not used as an absolute name.
 
 ## Running this locally
 
