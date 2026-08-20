@@ -1,4 +1,7 @@
-# 08 — Analytics Engineering Certification: Exam Prep
+# Exam prep — Analytics Engineering Certification
+
+<!-- Numbered 99 deliberately: this is the exam at the end of the path, not a course
+     within it, so it stays last however many courses get added ahead of it. -->
 
 **Status:** not started
 

@@ -1,10 +1,12 @@
-# 07 — Advanced Materializations
+# 05 — Incremental Models
 
 **Status:** not started
 
 ## What this course covers
 
-Incremental models, `is_incremental()`, full refresh, late-arriving data, ephemeral models.
+Incremental models, `is_incremental()`, full refresh, late-arriving data.
+
+Ephemeral and the view/table trade-offs are in [04 — Materialization Fundamentals](04-materialization-fundamentals.md); snapshots have their own course, [06](06-snapshots.md).
 
 ## Key concepts
 

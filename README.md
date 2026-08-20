@@ -10,33 +10,51 @@ Every practical exercise is committed here, so the history doubles as a learning
 
 ## Progress
 
+Numbered to match the course order in the official
+[dbt Certified Developer learning path](https://learn.getdbt.com/learn/learning-path/dbt-certified-developer).
+
 | # | Course | Status | Notes |
 |---|--------|--------|-------|
 | 1 | dbt Fundamentals | 🟢 Complete | [notes](notes/01-dbt-fundamentals.md) |
-| 2 | Materialization Fundamentals | 🟢 Complete | [notes](notes/02-materialization-fundamentals.md) |
-| 3 | Jinja, Macros & Packages | ⚪ Not started | [notes](notes/03-jinja-macros-packages.md) |
-| 4 | Advanced Testing | ⚪ Not started | [notes](notes/04-advanced-testing.md) |
-| 5 | Refactoring SQL for Modularity | 🟢 Complete | [notes](notes/05-refactoring-sql-for-modularity.md) |
-| 6 | Analyses, Seeds & Snapshots | ⚪ Not started | [notes](notes/06-analyses-seeds-snapshots.md) |
-| 7 | Advanced Materializations | ⚪ Not started | [notes](notes/07-advanced-materializations.md) |
-| 8 | Certification exam prep | ⚪ Not started | [notes](notes/08-exam-prep.md) |
+| 2 | Refactoring SQL for Modularity | 🟢 Complete | [notes](notes/02-refactoring-sql-for-modularity.md) |
+| 3 | Jinja, Macros, and Packages | ⚪ Not started | [notes](notes/03-jinja-macros-packages.md) |
+| 4 | Materialization Fundamentals | 🟢 Complete | [notes](notes/04-materialization-fundamentals.md) |
+| 5 | Incremental Models | ⚪ Not started | [notes](notes/05-incremental-models.md) |
+| 6 | Snapshots | ⚪ Not started | [notes](notes/06-snapshots.md) |
+| 7 | Analyses and Seeds | 🟢 Complete | [notes](notes/07-analyses-and-seeds.md) |
+| 8 | Advanced Testing | ⚪ Not started | [notes](notes/08-advanced-testing.md) |
+| 9 | Advanced Deployment | ⚪ Not started | [notes](notes/09-advanced-deployment.md) |
+| 10 | Exposures | ⚪ Not started | [notes](notes/10-exposures.md) |
+| 11 | dbt Mesh | ⚪ Not started | [notes](notes/11-dbt-mesh.md) |
+| — | Certification exam | ⚪ Not started | [notes](notes/99-exam-prep.md) |
+
+Standalone videos on the path, outside the numbered courses:
+
+| Video | Status | Notes |
+|---|--------|-------|
+| Python Models | 🟢 Complete | [notes](notes/videos/python-models.md) |
 
 Legend: ⚪ not started · 🟡 in progress · 🟢 complete
+
+**Remaining:** 7 of 11 courses — Jinja/Macros/Packages, Incremental Models, Snapshots,
+Advanced Testing, Advanced Deployment, Exposures, dbt Mesh — then the exam.
 
 ## What's in here
 
 ```
 models/
-  staging/    stg_* — 1:1 with source tables, renaming and casting only
-  marts/      dim_* / fct_* — business-facing, tested and documented
-  legacy/     pre-refactor queries, kept as audit baselines
-functions/    SQL UDFs, callable with {{ function('name') }}
-analysis/     compiled but never run — audit queries to paste into Snowflake
-seeds/        static CSVs loaded with `dbt seed`
-macros/       reusable Jinja
-tests/        singular tests
-snapshots/    SCD Type 2 captures
-notes/        one markdown file per course module
+  staging/     stg_* — 1:1 with source tables, renaming and casting only
+  marts/       dim_* / fct_* — business-facing, tested and documented
+  legacy/      pre-refactor queries, kept as audit baselines
+  python_demo/ Python models — .py instead of .sql, run as Snowflake sprocs
+functions/     SQL UDFs, callable with {{ function('name') }}
+analysis/      compiled but never run — audit queries to paste into Snowflake
+seeds/         static CSVs loaded with `dbt seed`
+macros/        reusable Jinja
+tests/         singular tests
+snapshots/     SCD Type 2 captures
+notes/         one markdown file per course, numbered to match the path
+  videos/      one per standalone video
 ```
 
 Current models:
@@ -50,6 +68,14 @@ Current models:
 | `dim_customers` | marts/dbt_fundamentals | table | Customer dimension: order dates, order count, lifetime value |
 | `fct_customer_orders` | marts/refactoring_sql | table | Orders enriched with customer attributes — the modular replacement for the legacy query |
 | `customer_orders_legacy` | legacy | table | The pre-refactor query, untouched, as the baseline the audit analyses compare against |
+| `date_spine` | python_demo | view | One row per day across 2024, built with `dbt_utils.date_spine` |
+| `is_holiday_2024` | python_demo | table | Python model: the date spine with each day flagged against `holidays.US()` |
+
+Seeds:
+
+| Seed | Description |
+|---|---|
+| `employees` | Employee emails and the customer account each one orders under |
 
 ## Running this locally
 

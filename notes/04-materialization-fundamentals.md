@@ -1,4 +1,4 @@
-# 02 — Materialization Fundamentals
+# 04 — Materialization Fundamentals
 
 **Status:** complete
 

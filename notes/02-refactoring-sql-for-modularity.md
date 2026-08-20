@@ -1,4 +1,4 @@
-# 05 — Refactoring SQL for Modularity
+# 02 — Refactoring SQL for Modularity
 
 **Status:** complete
 
