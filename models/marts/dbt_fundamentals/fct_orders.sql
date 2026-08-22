@@ -4,17 +4,11 @@ orders as(
     select * from {{ref('stg_jaffle_shop_orders')}}
 ),
 
-payments as(
-    select * from {{ref('stg_stripe_payment')}}
-    where payment_status <> 'fail'
-),
-
-total_order_amounts as(
-    select order_id
-         , max(payment_created_at) as payment_finalized_date
-         , sum(payment_amount)     as total_order_amount
-    from payments
-    group by 1
+-- Payment rollup lives in int_order_payments, which is incremental: an order's
+-- total depends only on its own payments, so its group key is also its merge key.
+-- The windows below cannot make that claim, which is why this model is a table.
+order_payments as(
+    select * from {{ref('int_order_payments')}}
 ),
 
 paid_orders as (
@@ -56,7 +50,7 @@ paid_orders as (
                )                                                as running_clv
     from orders
         
-    left join total_order_amounts as toa 
+    left join order_payments as toa
     on orders.order_id = toa.order_id
 
 )

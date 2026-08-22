@@ -1,0 +1,31 @@
+models:
+  - name: int_order_payments
+    description: >
+      Non-failed payment totals rolled up to one row per order. This is the only
+      incremental model in the project, because it is the only one whose group key
+      (order_id) is also its merge key: an order's total depends solely on that
+      order's own payments, so recomputing a touched order is always correct
+      regardless of the order in which batches arrive.
+    columns:
+      - name: order_id
+        description: Primary key. Foreign key to stg_jaffle_shop_orders.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: payment_finalized_date
+        description: >
+          Date of the order's most recent non-failed payment. NULL when every payment
+          on the order failed.
+
+      - name: total_order_amount
+        description: >
+          Sum of non-failed payment amounts for the order, in USD. NULL when every
+          payment on the order failed.
+
+      - name: _batched_at
+        description: >
+          Latest source load timestamp across the order's payments. Drives the
+          incremental watermark, so it must be non-null for the next run to be correct.
+        data_tests:
+        - not_null

@@ -34,6 +34,11 @@ models:
         data_tests:
         - not_null
 
+  # Inherits materialized: table from dbt_project.yml, and must stay that way. Every
+  # window here is partitioned by customer_id or not partitioned at all, so no
+  # incremental scheme keyed on order_id keeps them correct once source rows are
+  # backdated or revised. The incremental boundary sits upstream in
+  # int_order_payments, where the group key is also the merge key.
   - name: fct_orders
     description: >
       Order fact, one row per order, with payment totals and the customer-level
