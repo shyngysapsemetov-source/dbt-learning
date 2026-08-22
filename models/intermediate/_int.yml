@@ -6,6 +6,15 @@ models:
       (order_id) is also its merge key: an order's total depends solely on that
       order's own payments, so recomputing a touched order is always correct
       regardless of the order in which batches arrive.
+    config:
+      materialized: incremental
+      unique_key: order_id
+      incremental_strategy: merge
+      # Never drop this. The default 'ignore' silently omits new columns from the
+      # insert, leaving the table without them; an unqualified reference to a missing
+      # column then binds to the outer query and Snowflake reports a correlated
+      # aggregate instead of a missing column. That is what broke fct_orders.
+      on_schema_change: sync_all_columns
     columns:
       - name: order_id
         description: Primary key. Foreign key to stg_jaffle_shop_orders.
