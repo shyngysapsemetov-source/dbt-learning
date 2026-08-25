@@ -38,3 +38,29 @@ models:
           incremental watermark, so it must be non-null for the next run to be correct.
         data_tests:
         - not_null
+
+  - name: int_orders__pivoted
+    description: >
+      Successful payment amounts pivoted from one row per payment to one column per
+      payment method. The method list is a Jinja variable at the top of the model, so
+      adding a method is a one-word change rather than a new hand-written case
+      expression. A column is NULL, not zero, when the order has no payment of that
+      method — nothing here coalesces, so downstream consumers decide.
+    columns:
+      - name: order_id
+        description: Primary key. Foreign key to stg_jaffle_shop_orders.
+        data_tests:
+        - unique
+        - not_null
+
+      - name: credit_card_amount
+        description: Successful credit card payments for the order, in USD.
+
+      - name: coupon_amount
+        description: Successful coupon payments for the order, in USD.
+
+      - name: bank_transfer_amount
+        description: Successful bank transfer payments for the order, in USD.
+
+      - name: gift_card_amount
+        description: Successful gift card payments for the order, in USD.
