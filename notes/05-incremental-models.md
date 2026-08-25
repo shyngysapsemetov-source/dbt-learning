@@ -27,6 +27,7 @@ select * from {{ source('raw', 'events') }}
 - Without `unique_key` dbt appends. With it, dbt merges.
 - Use `>=`, not `>`. Rows in one batch can share a timestamp, and with `merge` reprocessing is idempotent, so `>=` is safe while `>` can silently skip.
 - Alias `{{ this }}` and qualify the column. An unqualified reference to a column the target lacks does not error — see the first gotcha below.
+- Cast columns whose type could drift. A stored column's type is fixed at creation, and `sync_all_columns` can only change it as far as the warehouse permits.
 
 ### The rule that decides whether a model can be incremental
 
@@ -176,6 +177,59 @@ Snowflake resolved the inner reference against `{{ this }}`, did not find it, an
 
 Two lessons: set `on_schema_change` on every incremental model, and always qualify columns inside a `{{ this }}` subquery so a missing column fails as a missing column.
 
+### `sync_all_columns` cannot change a NUMBER's scale
+
+The answer to what the type-change open question was asking. Swapping `amount / 100.0` for
+`{{ cents_to_dollars('amount') }}` in `stg_stripe_payment` looks like a pure refactor —
+identical values, and staging is a view, so there is nothing to migrate. But `round(x, 2)`
+pins a scale where the bare division did not:
+
+| Expression | Column type | `sum()` → |
+|---|---|---|
+| `amount / 100.0` | NUMBER(38,6) | NUMBER(38,6) |
+| `round(amount * 1.0 / 100, 2)` | NUMBER(38,2) | NUMBER(38,2) |
+
+`int_order_payments` is the only model that *stores* that number, so it was the only one
+to fail:
+
+```
+040052 (22000): SQL compilation error: cannot change column TOTAL_ORDER_AMOUNT
+from type NUMBER(38,6) to NUMBER(38,2) because changing the scale of a number is not supported.
+```
+
+dbt had described both relations, logged `Schema changed: True`, and issued:
+
+```sql
+alter table "ANALYTICS"."DBT_LEARNING"."INT_ORDER_PAYMENTS"
+    alter "TOTAL_ORDER_AMOUNT" set data type NUMBER(38,2)
+```
+
+So `sync_all_columns` does attempt **type** changes on existing columns, not just adds and
+removes — and it inherits whatever the warehouse allows:
+
+| Change | Snowflake |
+|---|---|
+| Add or drop a column | Yes |
+| Widen a NUMBER's precision, lengthen a VARCHAR | Yes |
+| Change a NUMBER's scale | **No** |
+| Change type family (NUMBER → VARCHAR) | **No** |
+
+No dbt setting works around the last two; `--full-refresh` is the only path, because
+drop-and-recreate is the only way Snowflake will restate the column.
+
+Three lessons:
+
+- **A view's column type is still a contract** the moment a downstream table stores it.
+  Type drift in staging is invisible until it reaches the first materialized column.
+- **Cast money columns explicitly in incremental models.** `total_order_amount` is now
+  `cast(... as number(38, 2))`, so the type is declared rather than inherited from
+  whatever expression currently produces `payment_amount`. The describe comparison then
+  matches and dbt skips the sync entirely.
+- The uncomfortable one: under the default `on_schema_change: ignore` this would have
+  merged NUMBER(38,2) values into the NUMBER(38,6) column and **passed silently**. The
+  hardening from the gotcha above is what converted an invisible type drift into a failed
+  build. That is the setting working, not misbehaving.
+
 ### `incremental_predicates` on the source side inserts duplicates
 
 ```yaml
@@ -217,4 +271,3 @@ The orders batches loaded id 104 at 07:22 and ids 100–103 at 07:37 — `_etl_l
 - `incremental_strategy: delete+insert` is the usual answer for hard deletes. What does it cost against `merge` on Snowflake, and does it need the same `unique_key`?
 - dbt 1.9's `microbatch` strategy splits the run into time-based batches with `event_time`. Does it handle the key-mismatch problem any better, or does it just automate the watermark?
 - Snowflake dynamic tables solve incrementality in the warehouse rather than in dbt. Where's the line — when is a dynamic table the better answer than an incremental model?
-- `on_schema_change: sync_all_columns` handles adds and removes. What happens on a **type** change, which is neither?
