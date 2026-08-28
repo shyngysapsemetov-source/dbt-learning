@@ -21,6 +21,9 @@ venv/
 # Local scratch — throwaway files for trying things out, not part of the project
 analysis/test.sql
 
+# Coaching ledger — private review notes, not part of the learning log
+notes/.coach-ledger.md
+
 # OS / editor
 .DS_Store
 Thumbs.db
