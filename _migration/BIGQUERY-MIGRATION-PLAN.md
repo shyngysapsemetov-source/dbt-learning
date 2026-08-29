@@ -1,0 +1,209 @@
+# Snowflake → BigQuery migration plan
+
+Written 2026-08-29. Covers all three projects: `dbt_fundamentals` (`jaffle_shop`),
+`mesh/platform` (`core_platform`), `mesh/finance` (`jaffle_finance`).
+
+## Why migrate at all
+
+The Snowflake trial expires **~2026-09-04**. Four courses remain on the dbt Certified
+Developer path (8 Advanced Testing, 9 Advanced Deployment, 10 Exposures, 11 dbt Mesh)
+plus the exam.
+
+Migrating *before* course 9 rather than after, because:
+
+1. **The deadline dissolves.** On a forever-free platform, courses 8/10/11 and the exam
+   stop being a race. Right now the trial is the only thing forcing a sprint.
+2. **Course 9 is Advanced Deployment** — it *is* the wiring of environments, scheduling
+   and CI. Done on a dying trial, that setup gets built twice: once as a discarded
+   exercise, once for real. Done after migrating, the exercise *is* the real
+   infrastructure.
+3. **A fresh Snowflake trial on another email costs almost the same as migrating** —
+   reload all data, redo key-pair auth in both envelopes, re-point both profiles, rebuild
+   the dbt Cloud connection — and lands back at this same decision around 2026-10-04.
+
+Verified prerequisite: **dbt Fusion 2.0.0-preview.212 supports BigQuery.** Probed the
+local binary directly — supported adapters are `snowflake, bigquery, databricks,
+redshift, duckdb, salesforce, clickhouse`. Only Postgres is excluded (experimental, behind
+`DBT_ALLOW_EXPERIMENTAL_ADAPTERS=true`). So there is no adapter risk.
+
+## Why BigQuery over the alternatives
+
+- **BigQuery** — chosen. Best match for the roles being targeted; forever-free tier
+  (10 GiB storage, 1 TiB queries/month). Cost is the namespace rework below.
+- **Databricks Free Edition** — least rework (Unity Catalog's `catalog.schema.table` maps
+  1:1), but market signal skews enterprise/data-engineering rather than consumer analytics.
+- **DuckDB** — cannot be the main target: **dbt Cloud has no DuckDB connection type**, so
+  course 9 would be impossible. Reserved for a future public portfolio repo, where
+  "a reviewer can clone it and it just runs" is the whole point.
+
+## Two landmines found up front
+
+Both verified 2026-08-29. Each would cost an afternoon if hit mid-migration.
+
+### 1. Column case will break every staging model
+
+Models select lowercase (`select id, first_name, last_name` in
+`stg_jaffle_shop_customers.sql`). Snowflake resolves unquoted identifiers
+case-insensitively; **BigQuery is case-sensitive**. The exported CSVs carry UPPERCASE
+headers (`ID`, `FIRST_NAME`) because that is how Snowflake stored them.
+
+Loading them as-is → `Name id not found inside source` on every staging model.
+**Fix: lowercase all column headers at load time.** Then every existing lowercase model
+works unchanged.
+
+### 2. Do NOT use the BigQuery sandbox
+
+The sandbox needs no credit card but **expires every table after 60 days**. It would
+silently delete models and the snapshot mid-certification. Use a real billing account and
+stay inside the free tier — at 3,241 rows that is four orders of magnitude of headroom.
+
+## Phase 0 — Namespace model (decided)
+
+Snowflake is `database.schema.table`; BigQuery is `project.dataset.table`. Same depth, so
+a 1:1 three-project mirror looks tempting. **It does not work:** GCP project IDs are
+globally unique, so `raw` / `analytics` are long taken and every `database:` value changes
+anyway — the zero-edit benefit evaporates and cross-project IAM is left over for nothing.
+
+Decision: **one GCP project, database+schema collapsed into dataset names.**
+
+| Snowflake | BigQuery |
+|---|---|
+| `raw.jaffle_shop.*` | `<proj>.raw_jaffle_shop.*` |
+| `raw.stripe.payment` | `<proj>.raw_stripe.payment` |
+| `raw_mesh.jaffle_shop.*` | `<proj>.raw_mesh_jaffle_shop.*` |
+| `analytics.dbt_learning.*` | `<proj>.dbt_learning.*` |
+| `analytics.dbt_learning_snapshots.*` | `<proj>.dbt_learning_snapshots.*` |
+| `analytics.prod.*` | `<proj>.prod.*` |
+| `analytics.mesh_dev.*` | `<proj>.mesh_dev.*` |
+
+Two things survive untouched: the deliberate `raw` vs `raw_mesh` separation persists as
+distinct dataset prefixes (so the `customers`/`orders` collision avoidance still holds),
+and the `schema: snapshots` → `dbt_learning_snapshots` suffixing is dbt's own
+`generate_schema_name`, not a Snowflake behaviour, so it carries over unchanged.
+
+## Phase 1 — Provision GCP (~45 min) — USER
+
+1. Create GCP project; enable the BigQuery API.
+2. Service account with **BigQuery Data Editor** + **BigQuery Job User** at project level.
+3. JSON key → `~/.dbt/keys/bq_dbt_sa.json` (same dir as the Snowflake keys, already
+   outside the public repo).
+4. Create the 7 datasets above. **Set location once and consistently — `EU`.** Datasets in
+   different regions cannot be joined, and location cannot be changed after creation.
+5. `pip install google-cloud-bigquery`.
+
+Note: no `gcloud` or `bq` CLI on this machine (checked). Python 3.13.2 + pip work, so the
+client library is the lighter path than installing the full Cloud SDK.
+
+**Genuine simplification:** the PKCS#8-vs-PKCS#1 dual-envelope problem disappears. BigQuery
+takes one JSON keyfile, identical locally and in dbt Cloud.
+
+## Phase 2 — Load raw data (~45 min)
+
+Python loader over the 10 CSVs in `snowflake-export-20260829/`, using `SOURCE-TYPES.md`
+for explicit schemas.
+
+- **Lowercase every column header** (landmine 1).
+- **Explicit types, not autodetect.** Autodetect gets `payment.amount` right (INTEGER,
+  cents) but may read `order_date` as STRING.
+- **Skip the snapshot** — that is Phase 6.
+
+## Phase 3 — Profiles + dialect fixes (~2 h)
+
+Add BigQuery targets *alongside* Snowflake rather than replacing them, so Phase 7 can
+compare:
+
+```yaml
+default:
+  target: bq
+  outputs:
+    dev: { type: snowflake, ... }   # keep until Phase 7 passes
+    bq:
+      type: bigquery
+      method: service-account
+      keyfile: C:/Users/ashyngys/.dbt/keys/bq_dbt_sa.json
+      project: <gcp-project-id>
+      dataset: dbt_learning
+      location: EU
+      threads: 16
+```
+
+Edit `database:`/`schema:` in `_src_jaffle_shop.yml`, `_src_stripe.yml` (fundamentals) and
+`models/staging/__sources.yml` (platform). Then the four dialect fixes:
+
+| File | Change |
+|---|---|
+| `models/intermediate/int_order_payments.sql:11` | `'1900-01-01'::timestamp` → `cast('1900-01-01' as timestamp)` |
+| `models/intermediate/int_order_payments.sql:37` | `cast(… as number(38,2))` → **re-derive, see below** |
+| `snapshots/snapshots.yml:11` | `to_date('9999-12-31')` → `date '9999-12-31'` |
+| `macros/load_payment_batch.sql` | `'…'::date` ×2 → `date '…'` |
+
+`current_timestamp()` is portable — no change. The `dbt_utils` / `audit_helper` /
+`dbt_project_evaluator` hits in a dialect grep are package-internal integration-test
+profiles; those packages already ship BigQuery variants.
+
+**The `number(38,2)` cast is a judgment call, not a translation.** It exists because
+`on_schema_change: sync_all_columns` attempted a scale change and Snowflake refused with
+error `040052`. BigQuery's `NUMERIC` is fixed precision 38 / scale 9 and its
+schema-evolution rules differ, so the original reason may not apply — but removing the cast
+changes the model's output type, and `_int.yml` records that `on_schema_change` behaviour is
+what broke `fct_orders` once. Decide deliberately and verify; do not swap mechanically.
+
+Gate: `dbt build` green in `dbt_fundamentals` against `--target bq`.
+
+## Phase 4 — Mesh projects (~30 min)
+
+Add a `bq` target to the second profile and **rename it** — `profile: snowflake` in both
+mesh `dbt_project.yml` files becomes a lie after migration. Platform's sources move to
+`raw_mesh_jaffle_shop`.
+
+Finance needs nothing beyond the profile. Its three models are deliberately broken with
+bare `select * from fct_orders` and no `packages.yml`, for course 11 to fix. **Leave that
+alone — it is the exercise.**
+
+## Phase 5 — Rewire dbt Cloud (~1 h)
+
+New BigQuery connection (same JSON key). Recreate both environments — Development →
+`dbt_learning`, Production → `prod`, branch `main` — and the `0 6 * * *` `dbt build` job
+with docs-on-run. Run Production manually once before trusting the schedule.
+
+## Phase 6 — Restore snapshot history (~45 min, delicate)
+
+`dbt snapshot` cannot produce this — it would create fresh history with one valid-from row.
+Load `snapshot_orders_snapshot.csv` **directly** into
+`<proj>.dbt_learning_snapshots.orders_snapshot`, with dbt's meta columns typed correctly and
+the varchar timestamps parsed back (including the `9999-12-31` sentinel). Because the export
+preserved `dbt_scd_id`, later `dbt snapshot` runs append rather than restart.
+
+**Known imperfection:** `dbt_scd_id` is an md5 over key + `updated_at`, and timestamp→string
+casting differs between Snowflake and BigQuery. dbt may therefore compute different hashes
+for unchanged rows and add one extra version row per order on the first BigQuery run.
+Cross-warehouse snapshot continuity is imperfect in principle. The achievable goal is
+preserving the record of the 4 rows closed on 2026-08-20; a cosmetic extra version is the
+price. Expect it rather than debugging it.
+
+## Phase 7 — Parity check, BEFORE 2026-09-04 (~45 min)
+
+The reason Snowflake targets stay in `profiles.yml` until now. `audit_helper` cannot compare
+across warehouses, so per model compare `count(*)` plus a couple of aggregates
+(`sum(total_order_amount)`, `count(distinct customer_id)`) from each target and diff.
+
+**Must happen while the trial is alive.** After it lapses the reference is gone and any
+discrepancy becomes unfalsifiable.
+
+## Phase 8 — Decommission (~15 min)
+
+Only after Phase 7 passes: drop Snowflake targets from `profiles.yml`, retire the
+`.p8`/`.pem` keys, update `profiles.yml.example`, rewrite the Snowflake setup sections of the
+dbt memory store. Let the trial lapse on its own — it is free reference until 2026-09-04.
+
+## Effort
+
+~6–8 hours across two days. Then courses 9, 8, 10, 11 and the exam run on infrastructure
+that still exists in November.
+
+## Status
+
+- [x] Data exported — `snowflake-export-20260829/`, 10 tables / 3,241 rows, commit `cbd2bcb`
+- [x] Production 06:00 job confirmed healthy 2026-08-29 (the `NUMBER(38,6)` worry is closed)
+- [ ] Phase 1 — GCP provisioning (user)
+- [ ] Phases 2–8
