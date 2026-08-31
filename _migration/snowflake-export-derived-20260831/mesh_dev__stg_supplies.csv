@@ -1,0 +1,66 @@
+supply_uuid,supply_id,product_id,supply_name,supply_cost,is_perishable_supply
+05fe2680712d4bd8f86f48bd4c23d5bf,SUP-005,BEV-004,16oz compostable clear cup,0.130000,False
+08ef8795995cc9aae88675da85f5dd4d,SUP-019,JAF-005,melon,0.330000,True
+095e16444d40017b8eea8e6e2ca87280,SUP-002,JAF-004,cutlery - fork,0.070000,False
+0a6628b1db9a2495fb07b9a8f968ea55,SUP-004,JAF-002,napkin,0.040000,False
+0beb4d4aa031103c6e4bcfd93fdc0673,SUP-021,JAF-004,ghost pepper sauce,0.200000,True
+0c1009250b32f19a8c96b44ba55d3cb3,SUP-001,JAF-001,compostable cutlery - knife,0.070000,False
+184cc9d279e965448a5e06564522802b,SUP-003,JAF-004,serving boat,0.110000,False
+1a9db79a0dffc7f7d9a4d44306cddbd3,SUP-003,JAF-001,serving boat,0.110000,False
+22ac759d4186c01594747d94cf1e639b,SUP-008,BEV-002,chai mix,0.980000,True
+244096fba0562d8fe5ee3930fffff121,SUP-003,JAF-005,serving boat,0.110000,False
+2605abd1e55ed6de4e348bc034a6fa86,SUP-001,JAF-003,compostable cutlery - knife,0.070000,False
+263442efaf1ca60fc5b5e1ee2b84a7a8,SUP-004,JAF-004,napkin,0.040000,False
+27131bee93941e8fd7873153386df3d2,SUP-026,BEV-004,coffee,0.520000,True
+27714301ba8b6c825342849e215876b9,SUP-005,BEV-001,16oz compostable clear cup,0.130000,False
+2c1cd3640bd927fe4c2c96c9d936aa96,SUP-024,BEV-002,oatmilk,0.110000,True
+3a96dd4cd4319749a8d7afdfad7f77d2,SUP-006,BEV-002,16oz compostable clear lid,0.040000,False
+4070260c33e003647f31cbfeb14ff61f,SUP-025,BEV-002,whey protein,0.360000,True
+456bf6d9597659cdf7cc73905d0776c9,SUP-013,JAF-002,beef stew,1.690000,True
+4dc3410ce4935316aeea12e725fdc954,SUP-023,BEV-001,tangerine,0.200000,True
+4e79837cab61700ad3a921dbdd9f77d8,SUP-006,BEV-005,16oz compostable clear lid,0.040000,False
+50cd3f32dc0abaea8ee327726c3cafbb,SUP-006,BEV-004,16oz compostable clear lid,0.040000,False
+5355dce8b7c662ba9ac46d169fb08190,SUP-016,JAF-003,mustard,0.070000,True
+5ba10f47c811f26e7e76aa1c3e0d4709,SUP-010,JAF-003,cheese,0.200000,True
+5d36df7c912273e34fef50f55ad36761,SUP-003,JAF-003,serving boat,0.110000,False
+63cd102c0193f987ce1e5deb04b85854,SUP-002,JAF-005,cutlery - fork,0.070000,False
+6e910d5fccb03f71223d84887c3a37c4,SUP-003,JAF-002,serving boat,0.110000,False
+6ee284b1f38162fdeb6dafd8e644ed36,SUP-001,JAF-002,compostable cutlery - knife,0.070000,False
+6ef87057e4030f1d287f2dd64ff6e3ce,SUP-011,JAF-001,nutella,0.460000,True
+7260e55f3c55b9f4b8f322f61f228fff,SUP-006,BEV-001,16oz compostable clear lid,0.040000,False
+74affa51ac1051a74a0e9e2573f84d75,SUP-010,JAF-002,cheese,0.200000,True
+83a0706bde222529ec6b03c1a57a1a59,SUP-007,BEV-001,biodegradable straw,0.130000,False
+86f0deb95e645ddd7a0ffa6dd13cf946,SUP-018,JAF-004,pineapple,0.260000,True
+8813821fc0db2713feba5e250fd8934c,SUP-005,BEV-005,16oz compostable clear cup,0.130000,False
+89c0a3b02eae6e39eb2814f28f2b106d,SUP-002,JAF-002,cutlery - fork,0.070000,False
+8a288a22bd6855a2ae6ba5df6887984f,SUP-005,BEV-003,16oz compostable clear cup,0.130000,False
+8c8ae559e3683023234d6052e36b37f6,SUP-007,BEV-003,biodegradable straw,0.130000,False
+9104daa75a6b8cc97574bc66d4ca712c,SUP-007,BEV-002,biodegradable straw,0.130000,False
+9191d2be3a999925cd648034982813aa,SUP-009,JAF-004,bread,0.330000,True
+9d7f9bc22c368a2171c7dd0fce2b4153,SUP-004,JAF-005,napkin,0.040000,False
+a3856ff5e5a22b0158b1fc8ddbfaeb19,SUP-022,BEV-001,mango,0.320000,True
+a9ff71f9b28f5ff09ec765c563ebe547,SUP-004,JAF-001,napkin,0.040000,False
+ab08c2b8ce09d1c7d37372c6b833c964,SUP-027,BEV-003,french vanilla syrup,0.720000,True
+ab37f68051aa51ee74e1d777bcef35db,SUP-007,BEV-004,biodegradable straw,0.130000,False
+b0a3e19632ea3ecad6d63683b3f63893,SUP-020,JAF-005,minced beef,1.240000,True
+b62edfc09b91556ffab03245932c82fd,SUP-001,JAF-004,compostable cutlery - knife,0.070000,False
+b65c35196f83073137b786c284ce8d71,SUP-002,JAF-003,cutlery - fork,0.070000,False
+b9440c67a43ed212563b1e5c82c51932,SUP-010,JAF-005,cheese,0.200000,True
+b980f8b86c0c0b70dc5417a32dac7be8,SUP-014,JAF-003,lamb and pork bratwurst,2.340000,True
+cb71fe5346ed92518d80a663267e2843,SUP-009,JAF-002,bread,0.330000,True
+cc5a3f2d9cbfaa63918c4ef840ec97f3,SUP-001,JAF-005,compostable cutlery - knife,0.070000,False
+d18d0d864a83d087c3a31c5d57623da5,SUP-007,BEV-005,biodegradable straw,0.130000,False
+d394248c2a916bc2412f1e7d5fa3041f,SUP-017,JAF-004,pulled pork,2.150000,True
+d3e5f7be1e98b5dd424f0b7639427dc6,SUP-026,BEV-003,coffee,0.520000,True
+da66ac14293318f898e2b6bf47bf0944,SUP-005,BEV-002,16oz compostable clear cup,0.130000,False
+de2daf744eb5b1586ce87485e5d0dc94,SUP-009,JAF-001,bread,0.330000,True
+df0b5eb60008c8458493b56369126201,SUP-002,JAF-001,cutlery - fork,0.070000,False
+e03b04b01196f786bf1d555e84147446,SUP-010,JAF-004,cheese,0.200000,True
+e590f2b885fcd91265140d3d56e9e442,SUP-028,BEV-005,kiwi,0.200000,True
+e742bfe88750e349b40480547747bb40,SUP-015,JAF-003,house-pickled cabbage sauerkraut,0.430000,True
+ebf6012a6cf14cca241a911fd2634aa0,SUP-012,JAF-001,banana,0.130000,True
+ed5d9f47cf384e207c39c7a6fb9d5274,SUP-006,BEV-003,16oz compostable clear lid,0.040000,False
+ee498505c3f21c77b8ca659b9cf50c17,SUP-009,JAF-003,bread,0.330000,True
+ee62a1ea7870c1f3c11425c51a79f56e,SUP-009,JAF-005,bread,0.330000,True
+f25c62e672725ea6d747e22e0066cddd,SUP-004,JAF-003,napkin,0.040000,False
+f999f86c69f9ef6b66dd8f035bb99ff4,SUP-029,BEV-005,lime,0.130000,True

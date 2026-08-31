@@ -214,6 +214,37 @@ comparison rules in `PARITY-BASELINE.md`.
 Phase 7 is now **"diff BigQuery against the file"** and can happen calmly next week. The
 deadline became an artifact. Snowflake targets no longer need to survive in `profiles.yml`.
 
+### Row-level derived export — added 2026-08-31, second reference side
+
+The aggregate-only baseline was a time-pressure choice, **not a technical limit**, and the user
+caught that: the derived models are materialized (or queryable) in Snowflake exactly like the raw
+tables, so nothing stopped them being exported row-for-row too. The account was still reachable,
+so they now are — `export_derived.py` → `snowflake-export-derived-20260831/`, **40 objects /
+11,685 rows**, plus a `MANIFEST.csv` carrying per-file row counts and sha256.
+
+Why it matters — the aggregates have two real blind spots:
+
+- **Compensating errors.** Two rows swapping a value leaves `n_rows`, `n_nonnull`, `n_distinct`
+  and `sum` all identical. A row-level diff catches it; the fingerprint cannot.
+- **TEXT and TIMESTAMP columns are thinly covered.** They get `min..max` plus `n_distinct` and no
+  `sum`, so a corruption in the middle of the range that preserves distinctness is invisible.
+
+It also changes a mismatch from a *detection* into a *diagnosis*: with only aggregates you learn
+that a column differs, not what the right value was. With the rows on disk you can see which side
+is wrong.
+
+Two deliberate choices in the exporter:
+
+- **Rows are sorted in Python on the rendered tuple, not by a SQL `order by`.** A SQL sort over a
+  text column is collation-dependent, so the two warehouses can legitimately order matching rows
+  differently and a line-by-line diff would misalign on correct data.
+- Headers lowercased and values rendered by `sf_query.render()` — the same renderer that produced
+  the raw CSVs, so all three artifacts are formatted consistently.
+
+Verified on capture: all 40 row counts agree with `n_rows` in `PARITY-BASELINE-20260831.csv`, and
+the 12 dev/prod object pairs are **byte-identical by sha256** — which re-confirms the zero-drift
+finding by a wholly different method than the aggregate sweep.
+
 Two results already banked from it, while Snowflake was alive to ask:
 
 - **Dev and prod have zero drift** — all 12 objects match on every column, type, row count and
@@ -259,10 +290,14 @@ captured; the remaining work runs on a schedule of your choosing.
 - [x] `analytics.prod_snapshots.orders_snapshot` exported 2026-08-31 — **missed by the original
       export**, found by an information-schema sweep. 104 rows, all open, no unique history.
 - [x] Phase 7 reference side captured — `PARITY-BASELINE-20260831.csv`, commit `176ca79`
+- [x] Phase 7 reference side **strengthened to row level 2026-08-31** —
+      `snowflake-export-derived-20260831/`, 40 objects / 11,685 rows, counts cross-checked against
+      the baseline and dev/prod confirmed byte-identical. Closes the aggregate blind spots
+      (compensating errors, thin TEXT/TIMESTAMP coverage).
 - [x] Full estate sweep: 9 non-system schemas across 3 databases, all accounted for.
       `SNOWFLAKE_LEARNING_DB` is empty; `ANALYTICS.PUBLIC` is stale and deliberately skipped.
-- [ ] **Pause the dbt Cloud 06:00 job before the trial lapses** (user, dbt Cloud UI). Otherwise
-      it fails nightly on a dead connection and burns run minutes and failure emails.
+- [x] **dbt Cloud 06:00 job unscheduled 2026-08-31** (user, dbt Cloud UI) — before the trial
+      lapsed, so it never fails nightly on a dead connection. Must be recreated in Phase 5.
 - [ ] Phase 1 — GCP provisioning (user)
 - [ ] Phases 2–6, 8
 

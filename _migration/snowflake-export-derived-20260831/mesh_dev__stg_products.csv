@@ -1,0 +1,11 @@
+product_id,product_name,product_type,product_description,product_price,is_food_item,is_drink_item
+BEV-001,tangaroo,beverage,mango and tangerine smoothie,6.000000,False,True
+BEV-002,chai and mighty,beverage,oatmilk chai latte with protein boost,5.000000,False,True
+BEV-003,vanilla ice,beverage,iced coffee with house-made french vanilla syrup,6.000000,False,True
+BEV-004,for richer or pourover,beverage,daily selection of single estate beans for a delicious hot pourover,7.000000,False,True
+BEV-005,adele-ade,beverage,"a kiwi and lime agua fresca, hello from the other side of thirst",4.000000,False,True
+JAF-001,nutellaphone who dis?,jaffle,nutella and banana jaffle,11.000000,True,False
+JAF-002,doctor stew,jaffle,house-made beef stew jaffle,11.000000,True,False
+JAF-003,the krautback,jaffle,lamb and pork bratwurst with house-pickled cabbage sauerkraut and mustard,12.000000,True,False
+JAF-004,flame impala,jaffle,"pulled pork and pineapple al pastor marinated in ghost pepper sauce,             kevin parker's favorite! ",14.000000,True,False
+JAF-005,mel-bun,jaffle,"melon and minced beef bao, in a jaffle, savory and sweet",12.000000,True,False
