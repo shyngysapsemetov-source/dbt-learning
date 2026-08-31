@@ -5,7 +5,7 @@ Written 2026-08-29. Covers all three projects: `dbt_fundamentals` (`jaffle_shop`
 
 ## Why migrate at all
 
-The Snowflake trial expires **~2026-09-04**. Four courses remain on the dbt Certified
+The Snowflake trial expires **~2026-09-01** (revised down from ~09-04 on 2026-08-31). Four courses remain on the dbt Certified
 Developer path (8 Advanced Testing, 9 Advanced Deployment, 10 Exposures, 11 dbt Mesh)
 plus the exam.
 
@@ -109,14 +109,14 @@ for explicit schemas.
 
 ## Phase 3 — Profiles + dialect fixes (~2 h)
 
-Add BigQuery targets *alongside* Snowflake rather than replacing them, so Phase 7 can
-compare:
+**Replace** the Snowflake targets — the original reason to keep them was Phase 7's live
+comparison, and that reference is now a committed CSV instead. Keeping a dead target only
+invites `--target dev` typos that fail confusingly.
 
 ```yaml
 default:
   target: bq
   outputs:
-    dev: { type: snowflake, ... }   # keep until Phase 7 passes
     bq:
       type: bigquery
       method: service-account
@@ -181,24 +181,48 @@ Cross-warehouse snapshot continuity is imperfect in principle. The achievable go
 preserving the record of the 4 rows closed on 2026-08-20; a cosmetic extra version is the
 price. Expect it rather than debugging it.
 
-## Phase 7 — Parity check, BEFORE 2026-09-04 (~45 min)
+## Phase 7 — Parity check — REFERENCE SIDE ALREADY CAPTURED, no deadline
 
-The reason Snowflake targets stay in `profiles.yml` until now. `audit_helper` cannot compare
-across warehouses, so per model compare `count(*)` plus a couple of aggregates
-(`sum(total_order_amount)`, `count(distinct customer_id)`) from each target and diff.
+**Rewritten 2026-08-31, when the trial window turned out to be 1 day, not 6.** The original
+plan — keep Snowflake targets alive and compare the two warehouses side by side — was
+unreachable: GCP was still unprovisioned and Phases 1–3 are ~3.5 h before a single BigQuery
+model exists to compare against.
 
-**Must happen while the trial is alive.** After it lapses the reference is gone and any
-discrepancy becomes unfalsifiable.
+So the Snowflake side was **recorded as a committed artifact** instead:
+`PARITY-BASELINE-20260831.csv`, 49 objects / 306 column rows of deliberately portable
+aggregates (`count(*)`, `count(col)`, `count(distinct col)`, `sum()` for numerics, `min..max`
+otherwise) plus full precision/scale types. Method in `make_fingerprint.py`, rationale and
+comparison rules in `PARITY-BASELINE.md`.
+
+Phase 7 is now **"diff BigQuery against the file"** and can happen calmly next week. The
+deadline became an artifact. Snowflake targets no longer need to survive in `profiles.yml`.
+
+Two results already banked from it, while Snowflake was alive to ask:
+
+- **Dev and prod have zero drift** — all 12 objects match on every column, type, row count and
+  aggregate. Nothing to reconcile during migration.
+- **The `NUMBER(38,6)` production worry was a false alarm.**
+  `PROD.INT_ORDER_PAYMENTS.TOTAL_ORDER_AMOUNT` is `NUMBER(38,2)`, same as dev. Measured, not
+  inferred from "the job runs fine".
+
+When comparing, expect `full_type` to differ everywhere (`NUMBER(38,0)` → `INT64`,
+`TIMESTAMP_NTZ` → `DATETIME`) and compare type *families*; treat text `min`/`max` mismatches as
+collation questions. `n_rows`, `n_nonnull`, `n_distinct` and numeric `sum` must match exactly.
 
 ## Phase 8 — Decommission (~15 min)
 
-Only after Phase 7 passes: drop Snowflake targets from `profiles.yml`, retire the
-`.p8`/`.pem` keys, update `profiles.yml.example`, rewrite the Snowflake setup sections of the
-dbt memory store, and **remove `snowflake` from the dbt-coach trigger list** —
-`~/.claude/skills/dbt-coach/SKILL.md` (description + opening line) and the `TRIGGER` regex in
-`~/.claude/hooks/dbt_coach_gate.py`. `bigquery` was added to both on 2026-08-31; the Snowflake
-half stays until the estate is actually off it. Let the trial lapse on its own — it is free
-reference until 2026-09-04.
+No longer gated on Phase 7 — Snowflake is going away on ~2026-09-01 whatever happens, and the
+parity reference now lives in a CSV rather than in the account. Drop the Snowflake targets from
+`profiles.yml` as part of Phase 3, then: retire the `.p8`/`.pem` keys, update
+`profiles.yml.example`, rewrite the Snowflake setup sections of the dbt memory store, and
+**remove `snowflake` from the dbt-coach trigger list** — `~/.claude/skills/dbt-coach/SKILL.md`
+(description + opening line) and the `TRIGGER` regex in `~/.claude/hooks/dbt_coach_gate.py`.
+`bigquery` was added to both on 2026-08-31; the Snowflake half stays until the estate is
+actually off it. Let the trial lapse on its own.
+
+Keep `~/.dbt/sf_query.py` (the ad-hoc query helper written 2026-08-31) as the template for a
+BigQuery equivalent — it is the thing that made this baseline possible, and the pattern
+generalises.
 
 **Do not write the real GCP project ID into this file.** `dbt-learning` is a public repo —
 keep `<proj>`. The Snowflake account identifier was nearly committed here once already.
@@ -210,7 +234,23 @@ that still exists in November.
 
 ## Status
 
+**Nothing is now blocked by the Snowflake trial.** Everything that expired with it has been
+captured; the remaining work runs on a schedule of your choosing.
+
 - [x] Data exported — `snowflake-export-20260829/`, 10 tables / 3,241 rows, commit `cbd2bcb`
-- [x] Production 06:00 job confirmed healthy 2026-08-29 (the `NUMBER(38,6)` worry is closed)
+- [x] Production 06:00 job confirmed healthy 2026-08-29; type verified by measurement 2026-08-31
+- [x] `analytics.prod_snapshots.orders_snapshot` exported 2026-08-31 — **missed by the original
+      export**, found by an information-schema sweep. 104 rows, all open, no unique history.
+- [x] Phase 7 reference side captured — `PARITY-BASELINE-20260831.csv`, commit `176ca79`
+- [x] Full estate sweep: 9 non-system schemas across 3 databases, all accounted for.
+      `SNOWFLAKE_LEARNING_DB` is empty; `ANALYTICS.PUBLIC` is stale and deliberately skipped.
+- [ ] **Pause the dbt Cloud 06:00 job before the trial lapses** (user, dbt Cloud UI). Otherwise
+      it fails nightly on a dead connection and burns run minutes and failure emails.
 - [ ] Phase 1 — GCP provisioning (user)
-- [ ] Phases 2–8
+- [ ] Phases 2–6, 8
+
+### Revised order
+
+1 → 2 → 3 → 4 → 6 → 5 → 8. Phase 7 folds in wherever convenient after 3, since it no longer
+needs a live Snowflake. Phase 5 (dbt Cloud) moved after 6 because rewiring the scheduler is
+pointless until the snapshot it builds on is restored.
