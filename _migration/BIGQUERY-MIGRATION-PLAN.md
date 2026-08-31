@@ -74,7 +74,13 @@ Decision: **one GCP project, database+schema collapsed into dataset names.**
 | `analytics.dbt_learning.*` | `<proj>.dbt_learning.*` |
 | `analytics.dbt_learning_snapshots.*` | `<proj>.dbt_learning_snapshots.*` |
 | `analytics.prod.*` | `<proj>.prod.*` |
+| `analytics.prod_snapshots.*` | `<proj>.prod_snapshots.*` |
 | `analytics.mesh_dev.*` | `<proj>.mesh_dev.*` |
+
+**`prod_snapshots` was added to this table on 2026-08-31** — the original mapping omitted it
+because the schema had been missed entirely. That made this an 8-dataset migration, not 7. It
+would have surfaced as a confusing failure at Phase 5, when the production job first tried to
+snapshot into a dataset nobody had created.
 
 Two things survive untouched: the deliberate `raw` vs `raw_mesh` separation persists as
 distinct dataset prefixes (so the `customers`/`orders` collision avoidance still holds),
@@ -87,8 +93,10 @@ and the `schema: snapshots` → `dbt_learning_snapshots` suffixing is dbt's own
 2. Service account with **BigQuery Data Editor** + **BigQuery Job User** at project level.
 3. JSON key → `~/.dbt/keys/bq_dbt_sa.json` (same dir as the Snowflake keys, already
    outside the public repo).
-4. Create the 7 datasets above. **Set location once and consistently — `EU`.** Datasets in
-   different regions cannot be joined, and location cannot be changed after creation.
+4. Create **all 8 datasets** from the table above — `raw_jaffle_shop`, `raw_stripe`,
+   `raw_mesh_jaffle_shop`, `dbt_learning`, `dbt_learning_snapshots`, `prod`, `prod_snapshots`,
+   `mesh_dev`. **Set location once and consistently — `EU`.** Datasets in different regions
+   cannot be joined, and location cannot be changed after creation.
 5. `pip install google-cloud-bigquery`.
 
 Note: no `gcloud` or `bq` CLI on this machine (checked). Python 3.13.2 + pip work, so the
@@ -99,13 +107,17 @@ takes one JSON keyfile, identical locally and in dbt Cloud.
 
 ## Phase 2 — Load raw data (~45 min)
 
-Python loader over the 10 CSVs in `snowflake-export-20260829/`, using `SOURCE-TYPES.md`
-for explicit schemas.
+Python loader over the **9 raw CSVs** in `snowflake-export-20260829/` (11 files total, minus
+the two snapshot exports), using `SOURCE-TYPES.md` for explicit schemas.
 
 - **Lowercase every column header** (landmine 1).
 - **Explicit types, not autodetect.** Autodetect gets `payment.amount` right (INTEGER,
   cents) but may read `order_date` as STRING.
-- **Skip the snapshot** — that is Phase 6.
+- **Skip both snapshot CSVs** — `snapshot_orders_snapshot.csv` and
+  `prodsnapshot_orders_snapshot.csv` are Phase 6, and loading them here would give dbt a
+  snapshot table it thinks it built.
+- Row counts to assert against are in `../PARITY-BASELINE-20260831.csv` (`n_rows`). Loading
+  without checking counts is how a truncated CSV becomes a silent data loss.
 
 ## Phase 3 — Profiles + dialect fixes (~2 h)
 
@@ -171,7 +183,12 @@ with docs-on-run. Run Production manually once before trusting the schedule.
 `dbt snapshot` cannot produce this — it would create fresh history with one valid-from row.
 Load `snapshot_orders_snapshot.csv` **directly** into
 `<proj>.dbt_learning_snapshots.orders_snapshot`, with dbt's meta columns typed correctly and
-the varchar timestamps parsed back (including the `9999-12-31` sentinel). Because the export
+the varchar timestamps parsed back (including the `9999-12-31` sentinel).
+
+**Do the same for `prodsnapshot_orders_snapshot.csv` → `<proj>.prod_snapshots.orders_snapshot`**
+(added 2026-08-31). Lower stakes: all 104 of its rows are open, so it carries no closed history
+— but the production job will append to whatever it finds, and finding nothing means restarting
+production history from scratch. Because the export
 preserved `dbt_scd_id`, later `dbt snapshot` runs append rather than restart.
 
 **Known imperfection:** `dbt_scd_id` is an md5 over key + `updated_at`, and timestamp→string
