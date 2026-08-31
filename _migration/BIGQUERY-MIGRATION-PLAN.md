@@ -194,7 +194,14 @@ discrepancy becomes unfalsifiable.
 
 Only after Phase 7 passes: drop Snowflake targets from `profiles.yml`, retire the
 `.p8`/`.pem` keys, update `profiles.yml.example`, rewrite the Snowflake setup sections of the
-dbt memory store. Let the trial lapse on its own — it is free reference until 2026-09-04.
+dbt memory store, and **remove `snowflake` from the dbt-coach trigger list** —
+`~/.claude/skills/dbt-coach/SKILL.md` (description + opening line) and the `TRIGGER` regex in
+`~/.claude/hooks/dbt_coach_gate.py`. `bigquery` was added to both on 2026-08-31; the Snowflake
+half stays until the estate is actually off it. Let the trial lapse on its own — it is free
+reference until 2026-09-04.
+
+**Do not write the real GCP project ID into this file.** `dbt-learning` is a public repo —
+keep `<proj>`. The Snowflake account identifier was nearly committed here once already.
 
 ## Effort
 
