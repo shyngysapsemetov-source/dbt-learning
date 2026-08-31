@@ -11,6 +11,14 @@ profiles.yml
 *.pem
 *.p8
 *.key
+# JSON added 2026-08-31: the BigQuery service-account key is a .json, and the
+# patterns above only ever covered the Snowflake .p8/.pem formats. Deliberately
+# specific rather than a blanket *.json, which would hide legitimate config.
+keys/
+bq_dbt_sa.json
+*service-account*.json
+*serviceaccount*.json
+*credentials*.json
 
 # Python
 __pycache__/
