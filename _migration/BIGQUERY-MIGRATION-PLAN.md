@@ -30,6 +30,26 @@ redshift, duckdb, salesforce, clickhouse`. Only Postgres is excluded (experiment
 
 - **BigQuery** — chosen. Best match for the roles being targeted; forever-free tier
   (10 GiB storage, 1 TiB queries/month). Cost is the namespace rework below.
+
+  **Do not confuse the two "free" things** (this caused a real question on 2026-08-31, and
+  getting it wrong would mean opening a second GCP account for no reason):
+
+  | | GCP Free Trial | BigQuery free usage tier |
+  |---|---|---|
+  | What | $300 promotional credit | 10 GiB storage + 1 TiB queries **per month** |
+  | Duration | 90 days, then gone | **Permanent** — part of standard BigQuery pricing |
+
+  The 90-day clock is on the credit, not on access. The free usage tier is not a promotion
+  and does not expire; it is simply how BigQuery bills. At 630 KiB of data and a few MB
+  scanned per `dbt build`, this estate sits at ~0.006% of the storage allowance. There is no
+  second trial to chase — that was the whole reason BigQuery beat another Snowflake trial.
+
+  **The one thing that actually needs doing:** convert the billing account to pay-as-you-go
+  before the trial ends (~2026-11-29 for a trial started 2026-08-31). If the trial lapses
+  without converting, resources are suspended and then deleted after a grace period — that
+  is the account lacking a payment relationship, not the free tier ending. Upgrading costs
+  $0 on its own. Set a **$1 budget alert** at the same time: if it ever fires, a query is
+  wrong, not the plan.
 - **Databricks Free Edition** — least rework (Unity Catalog's `catalog.schema.table` maps
   1:1), but market signal skews enterprise/data-engineering rather than consumer analytics.
 - **DuckDB** — cannot be the main target: **dbt Cloud has no DuckDB connection type**, so
