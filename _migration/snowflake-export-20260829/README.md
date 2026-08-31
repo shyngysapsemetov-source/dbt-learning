@@ -30,8 +30,9 @@ from them (if that is even the chosen approach) is a separate, later decision.
 | `snapshot_orders_snapshot.csv` | `analytics.dbt_learning_snapshots.orders_snapshot` | 108 |
 | `prodsnapshot_orders_snapshot.csv` | `analytics.prod_snapshots.orders_snapshot` | 104 |
 
-3,345 rows total (3,241 in the original 2026-08-29 export, plus the prod snapshot added
-2026-08-31). Column types in `SOURCE-TYPES.md`, read from `INFORMATION_SCHEMA.COLUMNS`
+**3,355 rows total**, all 11 files verified row-for-row against the live tables on 2026-08-31,
+zero mismatches. That check also corrected the count: the ten original files sum to **3,251**,
+not the 3,241 first written here — an arithmetic slip, not a missing file. Column types in `SOURCE-TYPES.md`, read from `INFORMATION_SCHEMA.COLUMNS`
 so the BigQuery rebuild can be faithful rather than CSV-inferred.
 
 ## The irreplaceable one

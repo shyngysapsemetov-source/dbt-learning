@@ -55,7 +55,7 @@ works unchanged.
 
 The sandbox needs no credit card but **expires every table after 60 days**. It would
 silently delete models and the snapshot mid-certification. Use a real billing account and
-stay inside the free tier — at 3,241 rows that is four orders of magnitude of headroom.
+stay inside the free tier — at ~3,400 rows that is four orders of magnitude of headroom.
 
 ## Phase 0 — Namespace model (decided)
 
@@ -237,7 +237,7 @@ that still exists in November.
 **Nothing is now blocked by the Snowflake trial.** Everything that expired with it has been
 captured; the remaining work runs on a schedule of your choosing.
 
-- [x] Data exported — `snowflake-export-20260829/`, 10 tables / 3,241 rows, commit `cbd2bcb`
+- [x] Data exported — `snowflake-export-20260829/`, 11 tables / 3,355 rows (verified row-for-row 2026-08-31), commit `cbd2bcb`
 - [x] Production 06:00 job confirmed healthy 2026-08-29; type verified by measurement 2026-08-31
 - [x] `analytics.prod_snapshots.orders_snapshot` exported 2026-08-31 — **missed by the original
       export**, found by an information-schema sweep. 104 rows, all open, no unique history.
