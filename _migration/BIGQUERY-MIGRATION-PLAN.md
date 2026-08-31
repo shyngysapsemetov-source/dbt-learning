@@ -245,6 +245,65 @@ Verified on capture: all 40 row counts agree with `n_rows` in `PARITY-BASELINE-2
 the 12 dev/prod object pairs are **byte-identical by sha256** — which re-confirms the zero-drift
 finding by a wholly different method than the aggregate sweep.
 
+### Typed Parquet export — added 2026-08-31, the authoritative reference side
+
+The user's next objection was also correct: **CSV carries no types.** Every value in those files
+is a string, so `12.50` and `12.5` are different bytes for the same `NUMBER(38,2)` and a Phase 7
+diff has to re-guess every column's type before it can compare — which is the very problem the
+parity work exists to remove. So the same 40 objects were re-exported as Parquet:
+`export_derived_parquet.py` → `snowflake-export-derived-20260831/parquet/`, **576 KiB**.
+
+Note the storage direction, which is the opposite of the intuition: Parquet is **less than half
+the size of the CSVs** (576 KiB vs 1.3 MiB) *and* typed. Columnar layout plus dictionary encoding
+plus snappy beats text comfortably. Type fidelity is not a storage cost here — it is a saving.
+(Excel would have been strictly worse than CSV, not better: xlsx stores numbers as IEEE-754
+doubles, so a `NUMBER(38,2)` loses exactness past ~15 significant digits.)
+
+**The landmine, found by verifying rather than assuming.** The first Parquet run was wrong in a
+way that looked completely fine. `snowflake-connector-python` defaults to
+`arrow_number_to_decimal=False`, which converts any fixed-point `NUMBER` with non-zero scale to
+`float64` on the way into Arrow. It also narrows integers to whatever the *observed values* fit —
+`customer_id NUMBER(38,0)` came back as `int8`, because no id exceeded 127. So the naive export
+stored exact decimals as floating point and encoded this snapshot's value range as if it were the
+column's type:
+
+| Snowflake declared | Driver inferred | Asserted instead |
+|---|---|---|
+| `NUMBER(38,2)` / `(38,6)` / `(38,4)` | `double` | `decimal128(p, s)` |
+| `NUMBER(38,0)` | `int8` | `decimal128(38, 0)` |
+| `NUMBER(18,0)` / `(4,0)` / `(2,0)` | `int8` / `int16` | `int64` |
+| `TIMESTAMP_NTZ` | `timestamp[ns]` | `timestamp[us]` |
+
+The fix is two-part and the order matters: set `arrow_number_to_decimal=True` **before the fetch**
+(casting afterwards cannot repair it — by then `0.1` is already the nearest binary double), then
+`cast()` the table to a schema derived from `information_schema.columns` rather than from the
+driver's inference. The cast is left `safe=True` on purpose, so a mapping that would lose data
+raises instead of quietly producing a plausible-looking reference file.
+
+**The transferable lesson: the file format is not the guarantee.** Parquet is perfectly capable of
+storing a float where a decimal belonged. What makes types portable is asserting the schema and
+verifying the round-trip — the format only preserves whatever you actually handed it.
+
+Two judgment calls, both recorded rather than hidden:
+
+- `scale == 0` maps to `int64` when precision ≤ 18 and to `decimal128(p, 0)` above it, so nothing
+  can overflow. That means `NUMBER(38,0)` keys land as `decimal128`, while BigQuery's own models
+  will produce `INT64` — so Phase 7 must compare type *families* here, exactly as
+  `PARITY-BASELINE.md` already requires.
+- `TIMESTAMP_*` maps to microseconds to match BigQuery's `DATETIME`/`TIMESTAMP` resolution rather
+  than Snowflake's nanosecond default. Lossless for this data, and proven so: the safe cast would
+  have raised on any sub-microsecond value.
+
+Verified: **every value in all 40 Parquet files renders identically to its CSV counterpart** —
+so the two exports corroborate each other, and any later disagreement means corruption in one.
+
+**Both formats are kept deliberately.** Parquet is authoritative for Phase 7 comparison; the CSVs
+stay because they are greppable, human-readable and diffable in a git history, which a binary
+columnar file is not.
+
+New local dependencies: `pyarrow` (25.0.1) and `pandas` (3.0.5) — the connector gates
+`fetch_arrow_all()` behind its pandas extra, so both are required, not just pyarrow.
+
 Two results already banked from it, while Snowflake was alive to ask:
 
 - **Dev and prod have zero drift** — all 12 objects match on every column, type, row count and
