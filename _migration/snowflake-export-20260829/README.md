@@ -28,8 +28,10 @@ from them (if that is even the chosen approach) is a separate, later decision.
 | `rawmesh_jaffle_shop__products.csv` | `raw_mesh.jaffle_shop.products` | 10 |
 | `rawmesh_jaffle_shop__supplies.csv` | `raw_mesh.jaffle_shop.supplies` | 65 |
 | `snapshot_orders_snapshot.csv` | `analytics.dbt_learning_snapshots.orders_snapshot` | 108 |
+| `prodsnapshot_orders_snapshot.csv` | `analytics.prod_snapshots.orders_snapshot` | 104 |
 
-3,241 rows total. Column types in `SOURCE-TYPES.md`, read from `INFORMATION_SCHEMA.COLUMNS`
+3,345 rows total (3,241 in the original 2026-08-29 export, plus the prod snapshot added
+2026-08-31). Column types in `SOURCE-TYPES.md`, read from `INFORMATION_SCHEMA.COLUMNS`
 so the BigQuery rebuild can be faithful rather than CSV-inferred.
 
 ## The irreplaceable one
@@ -63,7 +65,19 @@ purpose. `dbt show` renders timestamps as Arrow nanosecond int64, which overflow
 ## Not exported
 
 `analytics.prod.*` and `analytics.dbt_learning.*` — both are dbt build output, fully
-reproducible from source once the estate runs on BigQuery. Note that
-`analytics.prod.int_order_payments` is suspected to still hold `NUMBER(38,6)` from an
-unconfirmed restatement, which may have been failing the 06:00 job since 2026-08-25;
-that is a thing to verify, not to preserve.
+reproducible from source once the estate runs on BigQuery. Their aggregates *are* recorded, in
+`../PARITY-BASELINE-20260831.csv`, so correctness is still checkable after the trial lapses.
+
+**Correction, 2026-08-31:** this section previously suspected
+`analytics.prod.int_order_payments` of still holding `NUMBER(38,6)` and of failing the 06:00
+job since 2026-08-25. **Both were wrong.** It is `NUMBER(38,2)`, and dev and prod match on
+every column, type, row count and aggregate — measured, not assumed. See `../PARITY-BASELINE.md`.
+
+## The prod snapshot holds no unique history
+
+`prodsnapshot_orders_snapshot.csv` was added 2026-08-31 after `analytics.prod_snapshots` turned
+up in an information-schema sweep, having been missed entirely by the 2026-08-29 export. All
+104 of its rows are **open** (`dbt_valid_to` = the `9999-12-31` sentinel), zero closed: the
+production snapshot first ran *after* the 2026-08-20 source mutation, so it never observed a
+change. The 4 closed rows in the dev snapshot therefore remain the only irreplaceable SCD2
+history in the estate. Exported anyway — it is 104 rows and it is the production state.
