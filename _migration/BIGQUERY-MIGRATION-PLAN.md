@@ -125,6 +125,55 @@ client library is the lighter path than installing the full Cloud SDK.
 **Genuine simplification:** the PKCS#8-vs-PKCS#1 dual-envelope problem disappears. BigQuery
 takes one JSON keyfile, identical locally and in dbt Cloud.
 
+Verify with `python _migration/verify_phase1.py` before starting Phase 2. It checks the three
+things that fail *later* rather than at creation time: dataset location (a wrong region only
+breaks on the first cross-region join), default table expiration (bites 60 days in), and the
+IAM roles (a 403 on the first `dbt run`).
+
+### Steps 2–3 are blocked by org policy — added 2026-09-01
+
+The GCP organization enforces `iam.disableServiceAccountKeyCreation` (Google's "Secure by
+Default"), so **no service-account JSON key can be created**. The recommended remedy — grant
+yourself `roles/orgpolicy.policyAdmin` and turn the constraint off — is available but is the
+wrong trade: it disables the protection org-wide and permanently, to work around a problem
+only one phase actually has.
+
+Which phases need what:
+
+| Phase | Needs a key? | Path taken |
+|---|---|---|
+| 1–4, 6–8 (local dbt + Python) | No | User OAuth refresh token |
+| 5 (dbt Cloud) | Yes — dbt Cloud cannot run a browser consent flow | Deferred; decide at Phase 5 |
+
+So Phase 5 is decoupled rather than allowed to block everything upstream. Options when it
+arrives, cheapest first: (a) a **short-lived exception** — lift the constraint, create the one
+key, re-enforce it, which keeps the policy on for everything except a deliberate minute;
+(b) **Workload Identity Federation**, if dbt Cloud supports it on this plan; (c) skip Phase 5
+and keep production orchestration local. Nothing before Phase 5 depends on choosing now.
+
+The keyless path (three files, all committed):
+
+- `bq_creds.py` — one loader every script authenticates through. Prefers
+  `~/.dbt/keys/bq_dbt_sa.json` if it ever exists, falls back to `~/.dbt/keys/bq_oauth.json`.
+  Nothing else in the migration had to change to accommodate the policy.
+- `bq_oauth_setup.py` — one-time browser consent, writes the refresh token. Requires an
+  OAuth 2.0 **Desktop app** client, which the policy does *not* govern.
+- `verify_phase1.py` — authenticates through `bq_creds`, so it works under either credential.
+
+Two things to get right in the console, both silent failures otherwise:
+
+- Consent screen user type **Internal**. An *External* app left in "Testing" issues refresh
+  tokens that expire after **7 days** — everything would work today and break next week.
+- Only the `bigquery` scope is requested, not `cloud-platform`.
+
+**Honest trade-off, worth stating rather than hiding:** the OAuth credential is the user's own
+identity, which holds Owner on the project — *broader* than the service account's Data Editor +
+Job User would have been. What it buys is that no long-lived service-account key exists, which
+is precisely what the org policy protects against, and the credential sits behind an account
+with MFA rather than in a bare file. It also means `verify_phase1.py`'s two IAM checks now
+prove the project works, not that least privilege was granted; the script says so when it runs
+under OAuth. Cost is bounded by the query-usage quota either way, not by the identity.
+
 ## Phase 2 — Load raw data (~45 min)
 
 Python loader over the **9 raw CSVs** in `snowflake-export-20260829/` (11 files total, minus
@@ -377,11 +426,20 @@ captured; the remaining work runs on a schedule of your choosing.
       `SNOWFLAKE_LEARNING_DB` is empty; `ANALYTICS.PUBLIC` is stale and deliberately skipped.
 - [x] **dbt Cloud 06:00 job unscheduled 2026-08-31** (user, dbt Cloud UI) — before the trial
       lapsed, so it never fails nightly on a dead connection. Must be recreated in Phase 5.
-- [ ] Phase 1 — GCP provisioning (user)
+- [x] **Keyless auth path built 2026-09-01** — `bq_creds.py`, `bq_oauth_setup.py`, and
+      `verify_phase1.py` patched to authenticate through the loader. Written because
+      `iam.disableServiceAccountKeyCreation` blocks Phase 1 step 3 and lifting the constraint
+      org-wide is a worse trade than routing around it.
+- [x] `.json` credential patterns added to all three repos' `.gitignore` 2026-08-31 — they
+      covered only Snowflake's `.p8`/`.pem`, so a BigQuery keyfile was uncovered. Verified with
+      decoy filenames and `git check-ignore -v`.
+- [ ] Phase 1 — GCP provisioning (user). Steps 1, 4, 5 + OAuth client; step 2–3 deferred to
+      Phase 5, see the org-policy subsection.
 - [ ] Phases 2–6, 8
 
 ### Revised order
 
 1 → 2 → 3 → 4 → 6 → 5 → 8. Phase 7 folds in wherever convenient after 3, since it no longer
 needs a live Snowflake. Phase 5 (dbt Cloud) moved after 6 because rewiring the scheduler is
-pointless until the snapshot it builds on is restored.
+pointless until the snapshot it builds on is restored — and it is now also the only phase that
+needs a service-account key, so deferring it defers the org-policy decision too.

@@ -9,24 +9,28 @@ in Phase 3.
 
     python _migration/verify_phase1.py
 
-Reads the project id from the keyfile rather than taking it as an argument, so the real
-GCP project id never has to be typed into a command that lands in shell history — and never
-into this public repo.
+Reads the project id from the credential file rather than taking it as an argument, so the
+real GCP project id never has to be typed into a command that lands in shell history - and
+never into this public repo.
+
+Authentication goes through `bq_creds`, which accepts either a service-account keyfile or a
+user OAuth refresh token. This script does not care which: the point is to prove the *project*
+is configured correctly, and both credentials exercise the same API surface. What differs is
+what a FAIL on the IAM checks means - see the note printed with the credential source.
 
 The permission probe creates and immediately drops one table named `_dbt_permission_probe`
 in `dbt_learning`. That is the only way to prove BigQuery Data Editor actually works before
 dbt depends on it. It touches nothing else.
 """
 
-import json
 import os
 import sys
 
 from google.api_core import exceptions as gexc
-from google.cloud import bigquery
-from google.oauth2 import service_account
 
-KEYFILE = os.path.expanduser("~/.dbt/keys/bq_dbt_sa.json")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bq_creds  # noqa: E402
+
 LOCATION = "EU"
 PROBE = "_dbt_permission_probe"
 
@@ -50,19 +54,16 @@ def check(cond, good, bad):
 
 
 def main():
-    print("\n== keyfile ==")
-    if not os.path.exists(KEYFILE):
-        sys.exit("FAIL no keyfile at {} - step 5 of Phase 1 is incomplete".format(KEYFILE))
-    with open(KEYFILE) as fh:
-        info = json.load(fh)
-    project = info.get("project_id")
-    check(info.get("type") == "service_account",
-          "keyfile is a service-account key", "keyfile is not a service-account key")
-    check(bool(project), "project_id present in keyfile", "keyfile has no project_id")
-    print("  .. service account: {}".format(info.get("client_email")))
-
-    creds = service_account.Credentials.from_service_account_file(KEYFILE)
-    client = bigquery.Client(project=project, credentials=creds, location=LOCATION)
+    print("\n== credential ==")
+    client, source = bq_creds.client()
+    project = client.project
+    check(bool(project), "project id resolved from credential",
+          "credential has no project id")
+    print("  .. source: {}".format(source))
+    if source.startswith("user OAuth"):
+        print("  .. note: this is your own identity (Owner), so the two IAM checks below")
+        print("     prove the *project* works, not that a least-privilege role was granted.")
+        print("     Re-run under a service-account key if the org policy is ever lifted.")
 
     print("\n== datasets ==")
     try:
