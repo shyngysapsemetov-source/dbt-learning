@@ -299,6 +299,74 @@ what broke `fct_orders` once. Decide deliberately and verify; do not swap mechan
 
 Gate: `dbt build` green in `dbt_fundamentals` against `--target bq`.
 
+### In progress 2026-09-01 — the plan's "four dialect fixes" were seven
+
+The table above was written by grepping for Snowflake syntax. That finds what *looks*
+wrong; it cannot find valid-looking SQL that silently means something else on the other
+warehouse. Three of the seven were found only by dry-running candidate SQL against
+BigQuery, which is the transferable lesson: **a dialect migration is verified by execution,
+not by grep.**
+
+| # | Found by | Issue |
+|---|---|---|
+| 1–4 | grep | the table above |
+| 5 | dry-run | **`1.0` is a `FLOAT64` literal in BigQuery** but `NUMBER(2,1)` in Snowflake. `cents_to_dollars` read `{{ col }} * 1.0 / 100`, exact in Snowflake, floating point in BigQuery. Every money column downstream inherited it. `select round(2500 * 1.0 / 100, 2)` reports type `FLOAT`. Fixed by `cast(… as numeric)` before the divide. |
+| 6 | dry-run | **BigQuery rejects a `WHERE` on a `SELECT` with no `FROM`** — *"Query without FROM clause cannot have a WHERE clause."* Both `insert … select … where not exists` guards in `load_payment_batch.sql` were invalid. Fixed with `from unnest([1])`, which supplies the single row the guard needs. |
+| 7 | `dbt debug` | **dbt Fusion 2.0 needs a third GCP role: `roles/bigquery.readSessionUser`.** |
+| 8 | `dbt build` | `models/legacy/customer_orders_legacy.sql` hardcodes three-part `raw.jaffle_shop.orders` (5 relations). BigQuery parsed `raw` as a **project**, so the error was *"The project raw has not enabled BigQuery"* — a message that describes neither the file nor the real problem. Fixed to `raw_jaffle_shop.` / `raw_stripe.`. |
+| 9 | `dbt build` | `functions/schema.yml` declared `data_type: number` — Snowflake's spelling. *"Type not found: number"*. A **function signature** is dialect-specific even when the function body is portable, which is why the SQL file needed no change and the YAML did. |
+| 10 | `dbt build` | **BigQuery cannot run dbt Python models.** See below. |
+| 11 | `check_parity.py` | **`dbt_utils.date_spine` returns DATE on Snowflake but DATETIME on BigQuery**, with both bounds explicitly `cast(… as date)`. The widening is inside the package's BigQuery implementation, so it is invisible in our own source. 365 identical values, wider type; caught only by comparing rendered aggregates against the baseline. Fixed with an outer `cast(date_day as date)`. |
+
+Findings 8–10 were each fatal to `dbt build` and none was reachable by inspection — the
+`raw` one in particular reports a *project* problem for what is a **relation-naming**
+problem. Finding 11 broke nothing and would have shipped silently; it is the argument for
+Phase 7 existing at all.
+
+**Finding 10 is a capability loss, and the only one in this migration.** Snowflake executes
+dbt Python models natively on Snowpark. BigQuery has no in-warehouse Python: dbt submits the
+model to **Dataproc Serverless**, requiring `compute_region`, `dataproc_region`, a
+`gcs_bucket` staging bucket — and spend, as Dataproc is not in the free tier. Left enabled it
+fails with `Need to supply compute_region in profile to submit python job`. Decision: paying
+for a Dataproc cluster to look up US public holidays is the wrong trade, so
+`is_holiday_2024` is **disabled, not deleted** — `+enabled: false` in `dbt_project.yml`,
+`is_holiday_2024.py` untouched, two lines to restore. Verified by `dbt list` that the model
+left the graph *and* that no `UnusedResourceConfigPath (dbt1097)` warning fired, since a
+mistyped config key disables nothing and only warns.
+
+### Done 2026-09-01 — Phase 3 gate met
+
+`dbt build --target bq`: **64/64 success, 0 errors, 0 warnings** — 10 models, 51 tests, the
+seed, the snapshot and the `safe_divide` UDF. `check_parity.py`: **113/122 columns matching
+across 21 objects**, every model column included. The single remaining failure is
+`orders_snapshot` at 104 rows vs Snowflake's 108 — a *fresh* snapshot with one
+`dbt_updated_at` and every `dbt_valid_to` at the sentinel, versus three runs' accumulated
+SCD2 history. That is precisely Phase 6's work, not a defect.
+
+Two things verified as a side effect: `dbt_valid_to_current: cast('9999-12-31' as timestamp)`
+renders as a TIMESTAMP sentinel (so the DATE-vs-TIMESTAMP call in `snapshots.yml` was right),
+and `analysis/audit_all_columns.sql`'s 404 during `dbt compile` was an **ordering artifact,
+not a dialect error** — `audit_helper.compare_all_columns` introspects both relations'
+columns at *compile* time, so they must already exist in the warehouse. It compiles once the
+models are built, which on Snowflake was always true and on a fresh BigQuery is not.
+
+Nothing was executed against `raw` to establish 5 and 6 — `QueryJobConfig(dry_run=True)`
+validates DML syntax without writing, so a destructive statement can be type-checked safely.
+
+**Finding 7 in full, because its error message points at the wrong thing.** Fusion fetches
+query results over the BigQuery **Storage Read API**, where dbt Core used the REST API, so
+`dataEditor` + `jobUser` are no longer sufficient. The failure is at *connection* time and
+reads:
+
+> There was a problem connecting to the BigQuery Storage API.
+
+That names an API, so it reads like an API that needs enabling — a plausible wrong turn
+costing a detour through the API library. It is a missing role. The two are distinguishable
+only underneath: a disabled API returns `SERVICE_DISABLED`, a missing role returns
+`403 … does not have 'bigquery.readsessions.create' permission`. Confirmed it was the
+latter by calling `create_read_session` directly before touching anything. `verify_phase1.py`
+now probes this as a 28th check, so the *verifier* catches it rather than dbt.
+
 ## Phase 4 — Mesh projects (~30 min)
 
 Add a `bq` target to the second profile and **rename it** — `profile: snowflake` in both
@@ -510,12 +578,22 @@ captured; the remaining work runs on a schedule of your choosing.
       Data Editor by a create-and-drop. Datasets built by `create_datasets.py --apply`.
       Query-usage quota is **not settable on the Free Trial** — moved to the pay-as-you-go
       conversion, see "Why BigQuery over the alternatives". $1 budget alert still to set.
+      **Reopened by Phase 3:** the 27 checks were the right checks for dbt *Core*. Fusion 2.0
+      also needs `roles/bigquery.readSessionUser`, so there is now a 28th, and Phase 1's real
+      score was 27/28. See "the plan's four dialect fixes were seven", finding 7.
+- [x] **`roles/bigquery.readSessionUser` granted 2026-09-01** (user, console). `verify_phase1.py`
+      now reports **28/28**, and `dbt debug --target bq` passes all checks.
 - [x] **Phase 2 complete and parity-verified 2026-09-01** — `load_raw_bigquery.py --apply` loaded
       9 tables / 3,143 rows; `check_parity.py --database RAW RAW_MESH` reports **41/41 columns
       matching** the Snowflake baseline on row count, non-null count, distinct count and
       sum-or-range. Types verified against `information_schema` as well, all lowercase.
-- [ ] Phase 3 — profiles + dialect fixes
-- [ ] Phases 2–6, 8
+- [x] **Phase 3 complete and parity-verified 2026-09-01** — `dbt build --target bq` **64/64,
+      0 errors, 0 warnings**; `check_parity.py` **113/122**, every model column matching, the
+      only gap being `orders_snapshot`'s un-restored history (Phase 6). The plan's "four
+      dialect fixes" were **eleven**, seven of them findable only by execution — see above.
+      `is_holiday_2024` deliberately disabled (Dataproc). Snowflake profile backed up to
+      `~/.dbt/profiles.yml.snowflake-bak`; the `snowflake:` profile is untouched for Phase 4.
+- [ ] Phases 4–6, 8
 
 ### Revised order
 

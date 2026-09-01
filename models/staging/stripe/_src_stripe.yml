@@ -1,7 +1,8 @@
 sources:
   - name: stripe
-    database: raw
-    schema: stripe
+    # See _src_jaffle_shop.yml: dataset instead of database.schema, and `database:` omitted
+    # so it inherits the target's project rather than hardcoding it in a public repo.
+    schema: raw_stripe
     tables:
       - name: payment
         config:

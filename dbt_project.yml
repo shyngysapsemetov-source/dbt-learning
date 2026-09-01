@@ -42,3 +42,16 @@ models:
     # A table, not a view, so auditing doesn't re-run the legacy SQL every time.
     legacy:
       +materialized: table
+    python_demo:
+      # Disabled by the Snowflake -> BigQuery migration, 2026-09-01. This is a capability
+      # loss, not a syntax problem: Snowflake ran dbt Python models natively on Snowpark,
+      # whereas BigQuery has no in-warehouse Python and dbt submits the model to **Dataproc
+      # Serverless**, which needs compute_region + gcs_bucket + a staging bucket and is not
+      # covered by the free tier. Failure mode if left enabled:
+      #   Configuration Error: Need to supply compute_region in profile to submit python job
+      # Paying for a Dataproc cluster to look up US public holidays is the wrong trade, so
+      # the model is disabled rather than deleted -- is_holiday_2024.py is untouched and
+      # removing these two lines restores it once a compute_region exists.
+      # date_spine stays enabled: it is plain SQL and other work may still reference it.
+      is_holiday_2024:
+        +enabled: false

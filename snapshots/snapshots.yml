@@ -2,10 +2,16 @@ snapshots:
   - name: orders_snapshot
     relation: source('jaffle_shop', 'orders')
     config:
+      # `schema:` is a SUFFIX on the target dataset, not an absolute name, so this lands at
+      # <project>.dbt_learning_snapshots.orders_snapshot. `database: analytics` is dropped:
+      # it would now have to be the GCP project id, and omitting it inherits the target's.
       schema: snapshots
-      database: analytics
       unique_key: id
       strategy: check
       check_cols: ['id', 'user_id', 'order_date', 'status']
       hard_deletes: ignore
-      dbt_valid_to_current: "to_date('9999-12-31')"
+      # BigQuery has no to_date(). Cast to TIMESTAMP, not DATE, to match the type dbt gives
+      # dbt_valid_to on BigQuery -- a DATE sentinel against a TIMESTAMP column makes the
+      # snapshot's "is this row current" comparison a type error. 9999-12-31 is inside
+      # BigQuery's TIMESTAMP range (max 9999-12-31 23:59:59.999999 UTC), so it fits.
+      dbt_valid_to_current: "cast('9999-12-31' as timestamp)"

@@ -27,6 +27,7 @@ import os
 import sys
 
 from google.api_core import exceptions as gexc
+from google.cloud import bigquery
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bq_creds  # noqa: E402
@@ -55,8 +56,10 @@ def check(cond, good, bad):
 
 def main():
     print("\n== credential ==")
-    client, source = bq_creds.client()
-    project = client.project
+    # load() rather than client(): the Storage Read API probe below needs the raw
+    # credential object, which a bigquery.Client does not hand back.
+    creds, project, source = bq_creds.load()
+    client = bigquery.Client(credentials=creds, project=project, location=LOCATION)
     check(bool(project), "project id resolved from credential",
           "credential has no project id")
     print("  .. source: {}".format(source))
@@ -118,6 +121,35 @@ def main():
                 str(exc).splitlines()[0]))
     else:
         check(False, "", "skipped write probe: dbt_learning does not exist")
+
+    # dbt Fusion 2.0 fetches query results through the BigQuery Storage Read API rather
+    # than the REST API that dbt Core used, so it needs a THIRD role that the two above
+    # do not imply: roles/bigquery.readSessionUser. Without it every command fails at
+    # connection time with "There was a problem connecting to the BigQuery Storage API",
+    # which names the API and not the missing permission -- so it reads like a disabled
+    # API. It is not. The two are distinguishable only by the underlying error: a disabled
+    # API returns SERVICE_DISABLED, a missing role returns 403 on
+    # bigquery.readsessions.create. This probe surfaces that directly.
+    print("\n== BigQuery Read Session User (Fusion 2.0 result fetching) ==")
+    try:
+        from google.cloud import bigquery_storage_v1 as bqs
+    except ImportError:
+        check(False, "", "pip install google-cloud-bigquery-storage to probe this")
+    else:
+        table = "projects/{}/datasets/raw_stripe/tables/payment".format(project)
+        try:
+            session = bqs.BigQueryReadClient(credentials=creds).create_read_session(
+                request=bqs.types.CreateReadSessionRequest(
+                    parent="projects/{}".format(project),
+                    read_session=bqs.types.ReadSession(
+                        table=table, data_format=bqs.types.DataFormat.ARROW),
+                    max_stream_count=1))
+            check(len(session.streams) > 0, "read session created", "no streams returned")
+        except gexc.NotFound:
+            check(False, "", "raw_stripe.payment missing - run Phase 2 loader first")
+        except gexc.Forbidden as exc:
+            check(False, "", "grant roles/bigquery.readSessionUser: {}".format(
+                str(exc).splitlines()[0]))
 
     print("\n{} passed, {} failed".format(len(ok), len(fail)))
     if fail:

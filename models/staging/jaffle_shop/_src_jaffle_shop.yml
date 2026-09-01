@@ -1,8 +1,12 @@
 sources:
   - name: jaffle_shop
     description: A clone of a Postgres database
-    database: raw
-    schema: jaffle_shop
+    # BigQuery has project.dataset.table where Snowflake had database.schema.table, one
+    # level shallower, so raw.jaffle_shop collapses to the dataset raw_jaffle_shop.
+    # `database:` is deliberately omitted rather than set: dbt defaults it to the target's
+    # project, which keeps the GCP project id out of this public repo and lets the same
+    # source resolve in any project (dev, a colleague's, dbt Cloud) without an edit.
+    schema: raw_jaffle_shop
     tables:
       - name: customers
         description: Raw customers data

@@ -1,10 +1,16 @@
 functions:
   - name: safe_divide
     description: Divides numerator by denominator, returning null instead of erroring when the denominator is zero.
+    # `number` was Snowflake's spelling and BigQuery rejects it outright: "Type not found:
+    # number". These data_types are emitted verbatim into a CREATE FUNCTION signature, so
+    # they are dialect-specific even though the function *body* here is portable SQL.
+    # `numeric` and not `float64`: BigQuery's `/` returns NUMERIC for NUMERIC operands
+    # (verified by dry-run) but FLOAT64 for INT64 ones, so declaring numeric both keeps the
+    # arithmetic exact and is a return type the body can actually satisfy.
     arguments:                  # optional
       - name: numerator         # required if arguments is specified
-        data_type: number       # required if arguments is specified
+        data_type: numeric      # required if arguments is specified
       - name: denominator       # required if arguments is specified
-        data_type: number       # required if arguments is specified
+        data_type: numeric      # required if arguments is specified
     returns:                    # required
-      data_type: number         # required
+      data_type: numeric        # required

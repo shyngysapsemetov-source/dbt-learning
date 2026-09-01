@@ -1,7 +1,7 @@
 {#
     Test harness for the int_order_payments incremental model.
 
-    Simulates a source batch in raw.stripe.payment covering the three mutation
+    Simulates a source batch in raw_stripe.payment covering the three mutation
     classes a watermark has to survive. Every statement sets _batched_at to
     current_timestamp(): that bump IS the loading contract. An update that forgets
     it is invisible to the incremental run and silently corrupts the target.
@@ -20,21 +20,23 @@
 {% macro load_payment_batch() %}
 
     {% set insert_new_order_payment %}
-        insert into raw.stripe.payment
+        insert into raw_stripe.payment
             (id, orderid, paymentmethod, status, amount, created, _batched_at)
-        select 1001, 100, 'credit_card', 'success', 2500, '2025-02-15'::date, current_timestamp()
-        where not exists (select 1 from raw.stripe.payment where id = 1001)
+        select 1001, 100, 'credit_card', 'success', 2500, date '2025-02-15', current_timestamp()
+        from unnest([1])
+        where not exists (select 1 from raw_stripe.payment where id = 1001)
     {% endset %}
 
     {% set insert_late_payment %}
-        insert into raw.stripe.payment
+        insert into raw_stripe.payment
             (id, orderid, paymentmethod, status, amount, created, _batched_at)
-        select 1002, 1, 'coupon', 'success', 1500, '2026-08-22'::date, current_timestamp()
-        where not exists (select 1 from raw.stripe.payment where id = 1002)
+        select 1002, 1, 'coupon', 'success', 1500, date '2026-08-22', current_timestamp()
+        from unnest([1])
+        where not exists (select 1 from raw_stripe.payment where id = 1002)
     {% endset %}
 
     {% set flip_status_to_fail %}
-        update raw.stripe.payment
+        update raw_stripe.payment
            set status = 'fail'
              , _batched_at = current_timestamp()
          where id = 33
@@ -58,11 +60,11 @@
 {% macro revert_payment_batch() %}
 
     {% set remove_inserts %}
-        delete from raw.stripe.payment where id in (1001, 1002)
+        delete from raw_stripe.payment where id in (1001, 1002)
     {% endset %}
 
     {% set unflip_status %}
-        update raw.stripe.payment
+        update raw_stripe.payment
            set status = 'success'
              , _batched_at = current_timestamp()
          where id = 33
