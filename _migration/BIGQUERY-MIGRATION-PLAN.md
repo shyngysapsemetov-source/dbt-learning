@@ -50,6 +50,20 @@ redshift, duckdb, salesforce, clickhouse`. Only Postgres is excluded (experiment
   is the account lacking a payment relationship, not the free tier ending. Upgrading costs
   $0 on its own. Set a **$1 budget alert** at the same time: if it ever fires, a query is
   wrong, not the plan.
+
+  **Set the query-usage quota as part of that same conversion — added 2026-09-01.** A
+  10 GiB/day cap on *Query usage per day* (BigQuery API, in *Quotas & System Limits*) bounds
+  worst-case scanning to ~310 GiB/month, under the permanent 1 TiB/month free allowance. It
+  matters because a `jobUser` credential can query `bigquery-public-data`, which is petabytes,
+  billed to this project — the quota makes that arithmetically impossible rather than merely
+  unlikely.
+
+  It could not be set during Phase 1: **quota edits require an upgraded billing account**, and
+  the Free Trial cannot make them. That is acceptable only because the trial *cannot be
+  charged* — credits deplete and resources stop, no bill is issued. So the protection today is
+  the trial itself, and converting to pay-as-you-go is precisely what removes it. Conversion
+  and quota are therefore one action, not two: upgrading without the quota is the only
+  configuration in this plan where a mistake costs real money.
 - **Databricks Free Edition** — least rework (Unity Catalog's `catalog.schema.table` maps
   1:1), but market signal skews enterprise/data-engineering rather than consumer analytics.
 - **DuckDB** — cannot be the main target: **dbt Cloud has no DuckDB connection type**, so
@@ -130,26 +144,36 @@ things that fail *later* rather than at creation time: dataset location (a wrong
 breaks on the first cross-region join), default table expiration (bites 60 days in), and the
 IAM roles (a 403 on the first `dbt run`).
 
-### Steps 2–3 are blocked by org policy — added 2026-09-01
+### Steps 2–3: blocked by org policy, then resolved — 2026-09-01
 
 The GCP organization enforces `iam.disableServiceAccountKeyCreation` (Google's "Secure by
-Default"), so **no service-account JSON key can be created**. The recommended remedy — grant
-yourself `roles/orgpolicy.policyAdmin` and turn the constraint off — is available but is the
-wrong trade: it disables the protection org-wide and permanently, to work around a problem
-only one phase actually has.
+Default"), which blocked service-account key creation. **Resolved by overriding the constraint
+at project scope only** — the key now exists at `~/.dbt/keys/bq_dbt_sa.json` with Data Editor +
+Job User, and the policy stays enforced everywhere else in the org, permanently.
 
-Which phases need what:
+Three wrong turns, each worth remembering because each cost a round trip:
 
-| Phase | Needs a key? | Path taken |
-|---|---|---|
-| 1–4, 6–8 (local dbt + Python) | No | User OAuth refresh token |
-| 5 (dbt Cloud) | Yes — dbt Cloud cannot run a browser consent flow | Deferred; decide at Phase 5 |
+1. **Disabling the constraint org-wide** was the console's own suggestion and the first thing
+   considered. Rejected: it removes the protection everywhere, forever, to unblock one project.
+   Org policies support **per-resource overrides**, so the correct scope is the project.
+2. **`iam.managed.disableServiceAccountKeyCreation` is a different policy.** The `.managed.`
+   prefix marks Google's newer managed-constraints family; it is a separate object with its own
+   enforcement state. Overriding it changes nothing about the legacy constraint. The error
+   message's *"Enforced Organization Policies IDs"* line names the one actually blocking the
+   call — read it rather than pattern-matching on the name.
+3. **The OAuth consent screen's "Internal" user type failed** with `Error 403: org_internal`,
+   for the Owner account too. Internal admits only members of the org's domain; the Owner here
+   is a personal Gmail *granted* Owner on the project, not a domain member. An org existing is
+   not the same as your account belonging to it.
 
-So Phase 5 is decoupled rather than allowed to block everything upstream. Options when it
-arrives, cheapest first: (a) a **short-lived exception** — lift the constraint, create the one
-key, re-enforce it, which keeps the policy on for everything except a deliberate minute;
-(b) **Workload Identity Federation**, if dbt Cloud supports it on this plan; (c) skip Phase 5
-and keep production orchestration local. Nothing before Phase 5 depends on choosing now.
+The keyless OAuth path built before the override landed is **kept, not reverted** — `bq_creds`
+prefers the keyfile and falls back to OAuth, so it costs nothing to retain and is the standing
+answer if key creation is ever blocked again (or for a machine where dropping a key is not
+wanted). Phase 5 (dbt Cloud) is no longer gated on this: it needs a key, and a key now exists.
+
+**Do not re-enforce the override now that the key exists.** Re-enforcing blocks future key
+*rotation* while doing nothing about the key already on disk — the appearance of compliance in
+exchange for the ability to replace a key suspected of being compromised.
 
 The keyless path (three files, all committed):
 
@@ -160,19 +184,23 @@ The keyless path (three files, all committed):
   OAuth 2.0 **Desktop app** client, which the policy does *not* govern.
 - `verify_phase1.py` — authenticates through `bq_creds`, so it works under either credential.
 
-Two things to get right in the console, both silent failures otherwise:
+If that fallback is ever needed, two things to get right in the console:
 
-- Consent screen user type **Internal**. An *External* app left in "Testing" issues refresh
-  tokens that expire after **7 days** — everything would work today and break next week.
+- Consent screen user type. **Internal** has no token expiry but admits only accounts in the
+  org's domain — it fails with `org_internal` for a Gmail merely granted Owner. **External**
+  works with any account but, left in "Testing", issues refresh tokens that expire after
+  **7 days**; publishing to remove that expiry needs Google verification, because
+  `.../auth/bigquery` is a sensitive scope. Neither option is free.
 - Only the `bigquery` scope is requested, not `cloud-platform`.
 
-**Honest trade-off, worth stating rather than hiding:** the OAuth credential is the user's own
-identity, which holds Owner on the project — *broader* than the service account's Data Editor +
-Job User would have been. What it buys is that no long-lived service-account key exists, which
-is precisely what the org policy protects against, and the credential sits behind an account
-with MFA rather than in a bare file. It also means `verify_phase1.py`'s two IAM checks now
-prove the project works, not that least privilege was granted; the script says so when it runs
-under OAuth. Cost is bounded by the query-usage quota either way, not by the identity.
+**Why the keyfile is the better credential here, now that both were built:** the OAuth token is
+the user's own identity, which holds Owner on the project — *broader* than Data Editor + Job
+User — and it either expires in 7 days or cannot be consented to at all. The service-account key
+is least privilege, does not expire, and works in dbt Cloud. Its one real weakness is the
+reason the org policy exists: a leaked key works forever, from anywhere, with no second factor.
+Mitigations in place: it lives in `~/.dbt/keys/` outside all three repos, `.json` credential
+patterns were added to every repo's `.gitignore` (they previously covered only Snowflake's
+`.p8`/`.pem`), and the SA holds no `serviceAccountKeyAdmin`, so it cannot mint further keys.
 
 ## Phase 2 — Load raw data (~45 min)
 
@@ -433,8 +461,14 @@ captured; the remaining work runs on a schedule of your choosing.
 - [x] `.json` credential patterns added to all three repos' `.gitignore` 2026-08-31 — they
       covered only Snowflake's `.p8`/`.pem`, so a BigQuery keyfile was uncovered. Verified with
       decoy filenames and `git check-ignore -v`.
-- [ ] Phase 1 — GCP provisioning (user). Steps 1, 4, 5 + OAuth client; step 2–3 deferred to
-      Phase 5, see the org-policy subsection.
+- [x] Phase 1 steps 2–3 — **service-account key created 2026-09-01** after overriding
+      `iam.disableServiceAccountKeyCreation` at *project* scope. Org stays protected elsewhere.
+      Roles: Data Editor + Job User only.
+- [x] Phase 1 step 5 — `google-cloud-bigquery` 3.44.0 + `google-auth-oauthlib` installed.
+- [ ] Phase 1 remainder (user): enable **BigQuery API**, create the **8 datasets in `EU`** with
+      default table expiration cleared, $1 budget alert. Then `python _migration/verify_phase1.py`.
+      Query-usage quota is **not settable on the Free Trial** — moved to the pay-as-you-go
+      conversion, see "Why BigQuery over the alternatives".
 - [ ] Phases 2–6, 8
 
 ### Revised order
