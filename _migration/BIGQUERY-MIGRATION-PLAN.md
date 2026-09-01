@@ -465,10 +465,12 @@ captured; the remaining work runs on a schedule of your choosing.
       `iam.disableServiceAccountKeyCreation` at *project* scope. Org stays protected elsewhere.
       Roles: Data Editor + Job User only.
 - [x] Phase 1 step 5 — `google-cloud-bigquery` 3.44.0 + `google-auth-oauthlib` installed.
-- [ ] Phase 1 remainder (user): enable **BigQuery API**, create the **8 datasets in `EU`** with
-      default table expiration cleared, $1 budget alert. Then `python _migration/verify_phase1.py`.
+- [x] **Phase 1 complete and verified 2026-09-01** — `verify_phase1.py` reports 27/27: 8 datasets
+      present, all in `EU`, none with a default table expiration, Job User proven by a query and
+      Data Editor by a create-and-drop. Datasets built by `create_datasets.py --apply`.
       Query-usage quota is **not settable on the Free Trial** — moved to the pay-as-you-go
-      conversion, see "Why BigQuery over the alternatives".
+      conversion, see "Why BigQuery over the alternatives". $1 budget alert still to set.
+- [ ] Phase 2 — load the 9 raw CSVs
 - [ ] Phases 2–6, 8
 
 ### Revised order
