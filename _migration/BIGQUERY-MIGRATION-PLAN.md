@@ -216,6 +216,46 @@ the two snapshot exports), using `SOURCE-TYPES.md` for explicit schemas.
 - Row counts to assert against are in `../PARITY-BASELINE-20260831.csv` (`n_rows`). Loading
   without checking counts is how a truncated CSV becomes a silent data loss.
 
+### Done 2026-09-01 — `load_raw_bigquery.py`, and the type decision it forced
+
+9 tables / 3,143 rows, row counts asserted twice (parsed, then re-queried from BigQuery) and
+then value-verified by `check_parity.py`: **41/41 columns match**.
+
+**`TIMESTAMP_NTZ` was mapped to `TIMESTAMP`, not `DATETIME` — deliberately the less faithful
+choice.** `DATETIME` is the exact equivalent of a zone-less Snowflake timestamp, and the
+faithful mapping was the first instinct. It was rejected because two features compare these
+columns against `current_timestamp()`, which is tz-aware:
+
+- source freshness — `loaded_at_field: _batched_at` and `_etl_loaded_at`
+- `int_order_payments`'s incremental watermark, `where _batched_at >= (select max(...))`
+
+Mixing a naive `DATETIME` with an aware `current_timestamp()` makes dbt's freshness calculation
+subtract a naive datetime from an aware one, which surfaces as a Python `TypeError` inside dbt
+rather than as anything resembling a data problem. The naive wall-clock values are therefore
+read as UTC. The assumption is uniform, so ordering, diffs and aggregates are unaffected — and
+`check_parity.py` renders with `format_timestamp(..., 'UTC')` for exactly this reason. Rendering
+in any other zone would shift every value by the offset and fail every timestamp column.
+
+Other mappings: `NUMBER(38,0)` → `INT64`; `NUMBER(38,4)` (`stores.tax_rate`) → `NUMERIC`, not
+`FLOAT64`, because it multiplies money and `0.075` has no exact binary form; `TEXT` → `STRING`;
+`BOOLEAN` → `BOOL`.
+
+**An empty CSV field is treated as an error, not as NULL.** The baseline shows
+`n_nonnull == n_rows` for all 41 raw columns, so there is no NULL to represent — and the export
+wrote `''` for None, which would otherwise make a NULL and an empty string indistinguishable.
+Asserting the absence is what makes the round-trip unambiguous rather than merely untested.
+
+### `check_parity.py` — the legacy-type-name trap
+
+Its first run reported 6 failing objects. All of them were integer columns "failing" a sum
+against a `min..max`, and the data was fine: **`SchemaField.field_type` returns BigQuery's
+legacy type names** — `INTEGER`, `FLOAT`, `BOOLEAN` — not the standard-SQL `INT64`, `FLOAT64`,
+`BOOL` that the docs, DDL and query results use. Matching only the standard names meant every
+integer column fell through to the wrong aggregate. `NUMERIC`, `TIMESTAMP`, `DATE` and `STRING`
+are spelled identically in both, which is what made it *look* like a data problem: the decimal
+and timestamp columns passed, so the rendering logic was demonstrably correct and only integers
+broke. Both spellings are now accepted rather than one canonicalised.
+
 ## Phase 3 — Profiles + dialect fixes (~2 h)
 
 **Replace** the Snowflake targets — the original reason to keep them was Phase 7's live
@@ -470,7 +510,11 @@ captured; the remaining work runs on a schedule of your choosing.
       Data Editor by a create-and-drop. Datasets built by `create_datasets.py --apply`.
       Query-usage quota is **not settable on the Free Trial** — moved to the pay-as-you-go
       conversion, see "Why BigQuery over the alternatives". $1 budget alert still to set.
-- [ ] Phase 2 — load the 9 raw CSVs
+- [x] **Phase 2 complete and parity-verified 2026-09-01** — `load_raw_bigquery.py --apply` loaded
+      9 tables / 3,143 rows; `check_parity.py --database RAW RAW_MESH` reports **41/41 columns
+      matching** the Snowflake baseline on row count, non-null count, distinct count and
+      sum-or-range. Types verified against `information_schema` as well, all lowercase.
+- [ ] Phase 3 — profiles + dialect fixes
 - [ ] Phases 2–6, 8
 
 ### Revised order
