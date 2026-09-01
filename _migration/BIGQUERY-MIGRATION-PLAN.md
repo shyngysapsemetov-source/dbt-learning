@@ -377,6 +377,60 @@ Finance needs nothing beyond the profile. Its three models are deliberately brok
 bare `select * from fct_orders` and no `packages.yml`, for course 11 to fix. **Leave that
 alone — it is the exercise.**
 
+### Done 2026-09-01 — and the money bug it exposed
+
+`dbt build` in platform: **22/22**, the same count as on Snowflake. Finance connects and
+parses; its three models remain broken by design. `check_parity.py`: **184/193 columns across
+31 objects**, all 10 `mesh_dev` objects passing, leaving only `orders_snapshot` (Phase 6).
+
+Profile renamed `snowflake:` → **`mesh:`**. The old name described the *warehouse*, which made
+it a lie the moment the warehouse changed; the new one describes what the profile is *for*.
+That is a three-file change — the profile plus both mesh `dbt_project.yml` files. The
+Snowflake target was **replaced, not kept alongside**, matching Phase 3's reasoning: the trial
+is gone, so a dead target only invites `--target dev` typos that fail confusingly. Original
+preserved at `~/.dbt/profiles.yml.pre-phase4-bak`.
+
+Sources: `database: raw_mesh` + `schema: jaffle_shop` → `schema: raw_mesh_jaffle_shop`, with
+`database:` omitted so it inherits the target's project and the GCP id stays out of a public
+repo.
+
+**Finding 12 — `date_part` does not exist on BigQuery.** `fct_orders.sql` used
+`date_part(month, ordered_at)`; BigQuery answers *"Function not found: date_part"*. Fixed with
+`extract(month from ordered_at)`, which is **ANSI and valid on both warehouses** — a
+portability fix rather than a swap to a BigQuery-only spelling, so no cross-database macro is
+needed (unlike the `dbt.date_trunc` already in the staging layer). Type goes NUMBER(2,0) →
+INT64, both exact integers, verified equal by parity. My own pre-flight grep missed it because
+the pattern list did not include `date_part` — **an enumerated denylist of "Snowflake syntax"
+is only ever as good as the enumeration.**
+
+**Finding 13 — the FLOAT64 literal bug again, four more sites, and this time it reached
+money in the marts.** `stg_jaffle_shop__orders.sql` (`order_total`, `tax_paid`),
+`stg_jaffle_shop__products.sql` (`product_price`) and `stg_jaffle_shop__supplies.sql`
+(`supply_cost`) all divided by `100.0`. Every one built green and every number was wrong:
+
+| object | BigQuery | Snowflake |
+|---|---|---|
+| `stg_jaffle_shop__orders.order_total` | `12051.809999999992` | `12051.810000` |
+| `fct_order_items.order_total` | `22797.920000000024` | `22797.920000` |
+| `stg_jaffle_shop__supplies.supply_cost` | `18.759999999999994` | `18.760000` |
+
+5 objects, 9 columns, propagated from staging into `int_orders`, `fct_orders` and
+`fct_order_items` — and from there into finance's revenue models. **No test caught it and no
+build went red.** Fixed as in `cents_to_dollars`: `cast(x as numeric) / 100`. Note
+`stg_jaffle_shop__products.product_price` *passed* parity by luck — its 10 values happened to
+round-trip — so it was fixed on the strength of the mechanism, not the symptom. That is the
+argument against treating a green parity column as evidence a float expression is safe.
+
+This is the same root cause as finding 5, found in a second repo after being fixed in the
+first, which is the actual lesson: **`/ 100.0` on integer cents is a migration-wide pattern,
+not a one-file bug.** Grepping `[0-9]\.[0-9]` across all model SQL is the check that finds
+it, and it is now recorded here as the thing to run in any future warehouse move.
+
+**6 stale objects in `mesh_dev` are expected and must NOT be "restored":** `stg_customers`,
+`stg_locations`, `stg_orders`, `stg_order_items`, `stg_products`, `stg_supplies`. Platform
+builds only the `stg_jaffle_shop__*` names (`dbt list` confirms 10 models), so these are
+pre-rename leftovers — same category as `ANALYTICS.PUBLIC`.
+
 ## Phase 5 — Rewire dbt Cloud (~1 h)
 
 New BigQuery connection (same JSON key). Recreate both environments — Development →
@@ -593,7 +647,13 @@ captured; the remaining work runs on a schedule of your choosing.
       dialect fixes" were **eleven**, seven of them findable only by execution — see above.
       `is_holiday_2024` deliberately disabled (Dataproc). Snowflake profile backed up to
       `~/.dbt/profiles.yml.snowflake-bak`; the `snowflake:` profile is untouched for Phase 4.
-- [ ] Phases 4–6, 8
+- [x] **Phase 4 complete and parity-verified 2026-09-01** — platform `dbt build` **22/22**
+      (same count as Snowflake), finance connects and parses with its three models left broken
+      by design. `check_parity.py` **184/193 across 31 objects**, all 10 `mesh_dev` objects
+      passing. Profile renamed `snowflake:` → `mesh:` (three files). Two more findings: **12**
+      `date_part` is absent on BigQuery, and **13** four more `/ 100.0` sites that turned
+      marts money into floats with a green build and no failing test.
+- [ ] Phases 6, 5, 8
 
 ### Revised order
 
