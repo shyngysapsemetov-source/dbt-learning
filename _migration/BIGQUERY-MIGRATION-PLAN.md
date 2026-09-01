@@ -457,6 +457,50 @@ Cross-warehouse snapshot continuity is imperfect in principle. The achievable go
 preserving the record of the 4 rows closed on 2026-08-20; a cosmetic extra version is the
 price. Expect it rather than debugging it.
 
+### Done 2026-09-01 — `restore_snapshots.py`, and the predicted imperfection did NOT happen
+
+**The prediction above was wrong, and it was measured rather than assumed.** After restoring,
+`dbt snapshot --target bq` left the table at exactly **108 rows / 4 closed** — zero spurious
+versions — and a *second* consecutive run did the same, so it is idempotent, not merely
+lucky once. `check_parity.py` is **202/202 columns across 32 objects, 0 problems: parity
+clean for every object present.**
+
+Why the hash concern did not bite: this snapshot uses `strategy: check` with
+`check_cols`, so change detection compares the check columns against the stored version.
+No check column changed, so no existing row was ever re-staged and no hash was recomputed
+for it. The divergence risk is real for a `timestamp` strategy whose merge keys on a
+recomputed `dbt_scd_id`; it is not automatically a property of "cross-warehouse snapshots".
+**Testing this was safe specifically because the restore reloads from a committed CSV — the
+restore path IS the backup**, which is what made an experiment on irreplaceable data
+reasonable rather than reckless.
+
+`restore_snapshots.py` — dry-run by default, `--apply` to write. Three decisions in it:
+
+- **Schema is mirrored from the table dbt itself built**, not hand-written. A hand-written
+  schema differing by one type is exactly how the Phase 5 production job fails on its first
+  append. `prod_snapshots.orders_snapshot` did not exist and was created from that mirror.
+- **Every field is mapped by column NAME, case-insensitively, because the two CSVs disagree
+  on column ORDER** — dev exports `DBT_SCD_ID,_ETL_LOADED_AT`, prod has them swapped.
+  Positional mapping would have loaded md5 hashes into a TIMESTAMP column. The script
+  refuses to run on an unmapped or missing column rather than guessing.
+- **Overwriting the dev table was checked, not assumed.** It held 104 rows that `dbt build`
+  had created minutes earlier, all open, all reproducible by re-running `dbt snapshot`. The
+  export holds those same 104 plus 4 that cannot be regenerated from source at all, so the
+  overwrite only ever adds information. That reasoning does **not** generalise to a snapshot
+  with real accumulated history.
+
+What was restored, and why it is the only irreplaceable data in the migration: orders
+**100–103 moving `placed` → `shipped` at 2026-08-20 14:37:16.994**, two versions each.
+`dbt snapshot` cannot regenerate that — it builds history forward from whatever it finds, so
+on a fresh warehouse it emits one open version per order and the record of a past change is
+simply gone.
+
+**Not tested, deliberately:** whether a *new* mutation correctly closes a restored row and
+opens a successor. That would require writing to `raw` (a separately-confirmed action) and
+would leave both the source data mutated and parity dirty for no proportionate gain.
+Idempotence across two runs plus clean parity is the evidence that the table is a
+functioning snapshot rather than merely byte-matching.
+
 ## Phase 7 — Parity check — REFERENCE SIDE ALREADY CAPTURED, no deadline
 
 **Rewritten 2026-08-31, when the trial window turned out to be 1 day, not 6.** The original
@@ -653,7 +697,14 @@ captured; the remaining work runs on a schedule of your choosing.
       passing. Profile renamed `snowflake:` → `mesh:` (three files). Two more findings: **12**
       `date_part` is absent on BigQuery, and **13** four more `/ 100.0` sites that turned
       marts money into floats with a green build and no failing test.
-- [ ] Phases 6, 5, 8
+- [x] **Phase 6 complete and parity-verified 2026-09-01** — `restore_snapshots.py --apply`
+      restored `dbt_learning_snapshots.orders_snapshot` (108 rows, **4 closed** — orders 100-103
+      `placed`→`shipped`, the only irreplaceable data in the migration) and created
+      `prod_snapshots.orders_snapshot` (104 rows, 0 closed). `check_parity.py` is now
+      **202/202 columns across 32 objects, 0 problems — parity clean for every object present**,
+      which closes Phase 7's data verification. The plan's predicted `dbt_scd_id` divergence
+      **did not occur**: two consecutive `dbt snapshot` runs both left it at 108/4.
+- [ ] Phase 5 (dbt Cloud), Phase 8 (decommission)
 
 ### Revised order
 
