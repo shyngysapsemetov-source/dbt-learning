@@ -896,6 +896,16 @@ captured; the remaining work runs on a schedule of your choosing.
       BigQuery, three dead key files removed, and **a plaintext `password:` found and deleted from
       `~/.dbt/profiles.yml.bak`** — the credential that was in no checklist because it was created
       incidentally by a different change. `dbt debug`: all checks passed.
+- [x] **Local target renamed `bq` → `dev` 2026-09-08** in both profiles of `~/.dbt/profiles.yml`
+      (`default` and `mesh`), so the local name matches `profiles.yml.example` and the dbt Cloud
+      job's `prod`. `bq` earned its name during the migration and would have gone stale the same
+      way `snowflake:` did. Nothing reads `target.name` anywhere in the three repos, so this is a
+      pure label change — no BigQuery object moved. Verified by `dbt debug` in both
+      `dbt_fundamentals` (schema `dbt_learning`) and `mesh/platform` (schema `mesh_dev`); the
+      second is the assertion that matters, since renaming only `default` would have left mesh
+      resolving nothing. **`--target bq` in the phase notes above is historical** — those commands
+      ran before the rename and are left as written rather than back-edited into a command that was
+      never typed; use `--target dev` today, or nothing, since it is the default.
 - [ ] **Billing, by ~2026-11-29** — convert to pay-as-you-go **and set the 10 GiB/day query quota in
       the same action**, not as two steps. The only configuration in this plan where a mistake costs
       real money.
