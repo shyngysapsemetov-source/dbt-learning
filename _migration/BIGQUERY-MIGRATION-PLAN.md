@@ -514,6 +514,65 @@ Verified after one manual Production run, before the schedule was enabled:
 The 8 still-unbuilt objects are both documented categories: `is_holiday_2024` ×2 (the disabled
 Python model) and the 6 stale pre-rename `mesh_dev.stg_*` leftovers.
 
+### Which setting lives at which layer — worked out 2026-09-08, three layers not two
+
+The mental model that survives contact with the UI. Anything that must **differ** between
+environments cannot live in a layer they **share**:
+
+| Layer | Holds | Scope |
+|---|---|---|
+| Connection / connection profile | GCP project, `location: EU`, the service-account key, max bytes billed, and (in this UI) a **required** target name | **Shared** by every environment using it |
+| Environment | **Dataset**, threads | Per-environment — this is what makes prod prod |
+| Job → *Advanced settings* | **Target name** override, i.e. the value of `target.name` | Per-job, overrides the layers above |
+
+Proven empirically rather than read off a settings page: `prod` was set as the *environment's*
+dataset, and the run built `prod` + `prod_snapshots` with nothing in `dbt_learning` and no
+`production_snapshots`. Had a profile-level dataset been winning, prod's models would have
+landed elsewhere. **`check_parity.py` is the check for this** — a misrouted dataset shows up as
+objects missing from `prod` and a falling column count, because the warehouse is the source of
+truth about where dbt actually wrote.
+
+**Decision: ONE profile, not one per environment.** Its required target name is set to `dev`,
+and the production *job* overrides it to `prod`. Reasoning:
+
+- **A second profile means a second copy of the same service-account credential.** Rotate the
+  key, update one, forget the other, and it fails at 06:00 weeks later with nothing obviously
+  linking the failure to the rotation. One credential, one place.
+- **If a single shared label had to serve both, `dev` is the fail-safe value, not `prod`.** The
+  `{% if target.name == 'prod' %}` idiom guards the expensive or destructive branch — full
+  history scans, full refreshes, real-data-only logic. A shared `dev` makes a production run
+  take the conservative branch: wrong, but cheap and visible. A shared `prod` makes *development*
+  runs behave like production, which is the direction that costs money.
+- Nothing in this project reads `target.name` today (only `target.schema`, `target.database` and
+  `target.role`, all in never-invoked macros). It is set now because **course 9 teaches exactly
+  that idiom**, and a production target still called `default` makes the guard silently never
+  fire — same failure shape as the `UnusedResourceConfigPath` key that already bit the finance
+  repo. `target.schema` is the sturdier guard where it will do, since it keys off what actually
+  determines where data lands rather than a label that can drift out of sync with it.
+
+Exam note: this is dbt Cloud plumbing. In dbt Core the target name is just the key under
+`outputs:` in `profiles.yml`, chosen with `dbt run --target prod`, and the certification assumes
+Core.
+
+### The Phase 8 deadlock, and why it is an environment problem not a connection problem
+
+Deleting the Snowflake connection is blocked while the **dev** environment still references it,
+and the dev environment cannot be moved to BigQuery because a connection joined to a profile
+stops being offered as a bare connection. Circular — and dbt Cloud is right to block it, since
+the same guard is what stops a connection being deleted out from under the 06:00 job.
+
+**Break it from the environment side: delete the dev environment, then the connection.** Safe
+here because `origin/main` is the only remote branch, so nothing was ever pushed from the Cloud
+IDE; a development environment owns no jobs and no run history. Had it been a *deployment*
+environment, deleting it would have destroyed run history — which is why Production was
+**repointed** in Phase 5 rather than replaced.
+
+The general lesson: **when a platform introduces a grouping abstraction over a primitive, move
+every consumer onto it in one pass.** Production went onto a profile and Development was left on
+the raw connection, and that half-done migration is what created the deadlock — the same class of
+error as a half-finished rename. In dependency-graph UIs, delete leaves first; connections are
+roots and environments are leaves.
+
 ## Phase 6 — Restore snapshot history (~45 min, delicate)
 
 `dbt snapshot` cannot produce this — it would create fresh history with one valid-from row.
