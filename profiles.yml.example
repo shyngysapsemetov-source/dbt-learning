@@ -1,31 +1,41 @@
 # Template for ~/.dbt/profiles.yml — copy there, do NOT commit the filled-in version.
 # The profile name must match `profile:` in dbt_project.yml (currently `default`).
 #
-# AUTH: key-pair, not password. Snowflake stopped supporting password auth for
-# connections on 2026-08-31. dbt Cloud's own guidance is key-pair for deployment
-# environments and OAuth for development ones; key-pair works for both and is the
-# only option for an unattended scheduled job, so this template uses it.
+# This project moved from Snowflake to BigQuery in September 2026. The Snowflake
+# version of this template is in the history if you want it; see
+# _migration/BIGQUERY-MIGRATION-PLAN.md for what the move involved.
 #
-# One-time key setup (run these yourself — the passphrase must not land in a
-# transcript or shell history):
+# AUTH: service-account keyfile. The alternative, `method: oauth`, opens a browser
+# and so CANNOT be used by a scheduled job, which rules it out for the deployment
+# environment. One mechanism for both targets beats two.
 #
-#   mkdir -p ~/.dbt/keys
-#   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.dbt/keys/snowflake_dbt_key.p8
-#   openssl rsa -in ~/.dbt/keys/snowflake_dbt_key.p8 -pubout -out ~/.dbt/keys/snowflake_dbt_key.pub
-#   chmod 600 ~/.dbt/keys/snowflake_dbt_key.p8
+# GCP setup (do this yourself — no key material belongs in a transcript):
 #
-# Then register the PUBLIC key in Snowflake (paste the base64 body only — strip the
-# -----BEGIN/END PUBLIC KEY----- lines and all newlines):
+#   1. Create a GCP project and enable the BigQuery API.
+#   2. Create a service account and grant it THREE roles at project level:
+#        roles/bigquery.dataEditor
+#        roles/bigquery.jobUser
+#        roles/bigquery.readSessionUser    <-- see below
+#   3. Create a JSON key and save it as ~/.dbt/keys/bq_dbt_sa.json
+#      chmod 600 ~/.dbt/keys/bq_dbt_sa.json
 #
-#   ALTER USER <your_user> SET RSA_PUBLIC_KEY='MIIBIjANBgkq...';
-#   DESC USER <your_user>;   -- confirm RSA_PUBLIC_KEY_FP is now set
+# **readSessionUser is required by dbt Fusion and NOT by dbt Core**, which is why
+# every tutorial names only the first two. Fusion fetches results over the BigQuery
+# Storage Read API where Core used REST, so without it even `dbt debug` fails, with
+# a message that names an API rather than a permission:
+#
+#   "There was a problem connecting to the BigQuery Storage API"
+#
+# That reads like an API needing enablement, and it isn't. Tell the two apart by the
+# error body: a disabled API gives SERVICE_DISABLED, a missing role gives
+#   403 ... Permission denied: 'bigquery.readsessions.create'
 #
 # Keys live in ~/.dbt/keys, deliberately OUTSIDE this repo: it is public, and a
-# leaked private key is game over. .gitignore covers *.p8/*.pem/*.key as a second
+# leaked key is game over. .gitignore covers *.json/*.p8/*.pem/*.key as a second
 # line of defence, not the first.
 #
-#   Windows (PowerShell):  $env:SNOWFLAKE_PRIVATE_KEY_PASSPHRASE = "..."
-#   Windows (bash):        export SNOWFLAKE_PRIVATE_KEY_PASSPHRASE="..."
+#   Windows (PowerShell):  $env:BIGQUERY_PROJECT = "..."
+#   Windows (bash):        export BIGQUERY_PROJECT="..."
 #
 # Verify with: dbt debug
 
@@ -33,20 +43,36 @@ default:
   target: dev
   outputs:
     dev:
-      type: snowflake
-      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      type: bigquery
+      method: service-account
 
-      # Key-pair auth. Drop private_key_passphrase if the key is unencrypted.
-      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
-      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE') }}"
+      # A path, not the key's contents. dbt Cloud is the opposite — there you paste
+      # the JSON itself into the UI.
+      #
+      # Prefer setting BIGQUERY_KEYFILE to an ABSOLUTE path (the README uses $HOME,
+      # which the shell expands before dbt ever sees it). Don't rely on the `~` in
+      # the fallback below — dbt passes the string to the Google client largely
+      # as-is, and tilde expansion is the shell's job, not dbt's.
+      keyfile: "{{ env_var('BIGQUERY_KEYFILE', '~/.dbt/keys/bq_dbt_sa.json') }}"
 
-      # Interactive alternative — opens a browser, so it CANNOT be used by a
-      # scheduled job. Comment out the two private_key_* lines to use this.
-      # authenticator: externalbrowser
+      # No default: this is a GCP project id and hardcoding one in a public repo is
+      # both a leak and a lie for anyone else cloning this.
+      project: "{{ env_var('BIGQUERY_PROJECT') }}"
 
-      role: "{{ env_var('SNOWFLAKE_ROLE', 'transformer') }}"
-      database: "{{ env_var('SNOWFLAKE_DATABASE', 'analytics') }}"
-      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'transforming') }}"
-      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'dbt_learning') }}"
-      threads: 8
+      # BigQuery's project.dataset.table is one level shallower than Snowflake's
+      # database.schema.table, so what was `analytics` + `dbt_learning` collapses
+      # into a project plus this dataset. Snapshots append `_snapshots` to it
+      # (see snapshots/snapshots.yml) rather than replacing it.
+      dataset: "{{ env_var('BIGQUERY_DATASET', 'dbt_learning') }}"
+
+      # NOT optional in practice. Leave it unset and BigQuery assumes the US
+      # multi-region, then every query fails with
+      #   Not found: Dataset <project>:dbt_learning was not found in location US
+      # It must match the location the datasets were created in.
+      location: "{{ env_var('BIGQUERY_LOCATION', 'EU') }}"
+
+      threads: 16
+
+      # Optional but worth setting: aborts a runaway query instead of billing for
+      # it. 1 GiB is enormous relative to this project's ~3,400 raw rows.
+      maximum_bytes_billed: 1073741824
