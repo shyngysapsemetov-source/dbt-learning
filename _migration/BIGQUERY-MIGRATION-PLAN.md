@@ -773,6 +773,45 @@ generalises.
 **Do not write the real GCP project ID into this file.** `dbt-learning` is a public repo —
 keep `<proj>`. The Snowflake account identifier was nearly committed here once already.
 
+### Done 2026-09-08 — and a plaintext password was the thing worth finding
+
+dbt Cloud side: Snowflake connection deleted, the dev environment deleted and recreated on
+BigQuery, and the `snowflake` entry removed from the connection profile. `dbt debug` passes
+against `<proj>` / `dbt_learning` / `EU` / `service-account`.
+
+On disk, four files deleted after inspecting each: `snowflake_dbt_key.p8`,
+`snowflake_dbt_key_pkcs1.pem`, `snowflake_dbt_key.pub`, and — the actual find —
+**`~/.dbt/profiles.yml.bak`, which held a plaintext Snowflake `password:`** from before
+key-pair auth was set up on 2026-08-14. It survived four weeks and two auth migrations
+because nothing ever had reason to open it again.
+
+Two lessons, the second more important than the first:
+
+- **The credential that outlives its account is the one nobody is looking for.** The `.p8`
+  keys were tracked in this plan from the start and were always going to be retired on
+  schedule. The password was in a `.bak` file created incidentally during a *different*
+  change, so it appeared in no checklist. **Grep backups for `password:`/`BEGIN.*PRIVATE
+  KEY`, don't just delete the files you remember making.**
+- **Deleting the file is not the whole remediation.** A reused password outliving the
+  account it was made for is the real exposure, so the follow-up is rotating it wherever
+  else it is used — the dead Snowflake account is the *least* of it.
+
+Kept deliberately: `~/.dbt/profiles.yml.snowflake-bak` and `profiles.yml.pre-phase4-bak`
+(verified to contain only a *path* to a key, never key material — they are the record of
+what was migrated from), and `~/.dbt/sf_query.py` as the template for a BigQuery
+equivalent.
+
+`~/.dbt/keys/` now holds exactly one file, `bq_dbt_sa.json`. The live `profiles.yml` has
+both `default` and `mesh` on BigQuery with no Snowflake target anywhere.
+
+**Not done, deliberately, against this plan's own instruction:** `snowflake` was **kept** in
+the dbt-coach trigger regex and skill description. The plan said drop it once the estate was
+off Snowflake, but that reasoning has inverted — now that the migration is the project's
+largest artifact, a prompt mentioning Snowflake is almost certainly *about the migration*,
+which is dbt work the skill should fire on. Dropping the trigger would suppress it exactly
+when it is most useful. The stale "migrating … trial expires ~2026-09-04" line in
+`SKILL.md` *was* fixed, since that one had become actively wrong.
+
 ## Effort
 
 ~6–8 hours across two days. Then courses 9, 8, 10, 11 and the exam run on infrastructure
@@ -848,12 +887,15 @@ captured; the remaining work runs on a schedule of your choosing.
       `check_parity.py` rose to **274/274 columns across 43 objects, 0 problems**. Dev environment
       deliberately parked. Finding 14: `grant_select.sql` is Snowflake-only and dead, left as
       course content.
-- [ ] Phase 5 last click — enable `0 6 * * *` on the deploy job (held until the manual run was green)
-- [ ] **Phase 8 (decommission)** — reduced to bookkeeping: the Snowflake trial lapsed ~2026-09-04
-      and cost nothing, because every export was already committed and parity was signed off at
-      202/202 before it expired. Remaining: delete the Snowflake connection + profile from dbt
-      Cloud, decide on `~/.dbt/keys/*.p8`. **Keep `~/.dbt/profiles.yml.snowflake-bak`** — it is the
-      record of what was migrated *from*, which is the artifact wanted when explaining the migration.
+- [x] Phase 5 last click 2026-09-08 — `0 6 * * *` enabled on the deploy job, held until the manual
+      run was green. Job **Target name** set to `prod` (Advanced settings), overriding the shared
+      profile's `dev`.
+- [x] **Phase 8 complete 2026-09-08 — MIGRATION DONE, 8 of 8 phases.** The Snowflake trial lapsed
+      ~2026-09-04 and cost nothing: every export was committed and parity signed off at 202/202
+      before it expired. dbt Cloud connection + profile entry deleted, dev environment recreated on
+      BigQuery, three dead key files removed, and **a plaintext `password:` found and deleted from
+      `~/.dbt/profiles.yml.bak`** — the credential that was in no checklist because it was created
+      incidentally by a different change. `dbt debug`: all checks passed.
 - [ ] **Billing, by ~2026-11-29** — convert to pay-as-you-go **and set the 10 GiB/day query quota in
       the same action**, not as two steps. The only configuration in this plan where a mistake costs
       real money.
