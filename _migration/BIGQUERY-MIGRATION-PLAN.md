@@ -437,6 +437,83 @@ New BigQuery connection (same JSON key). Recreate both environments — Developm
 `dbt_learning`, Production → `prod`, branch `main` — and the `0 6 * * *` `dbt build` job
 with docs-on-run. Run Production manually once before trusting the schedule.
 
+### Done 2026-09-08 — and dbt Cloud does not model connections the way the plan assumed
+
+The plan said "new BigQuery connection … recreate both environments". That is one step short.
+**A dbt Cloud (Fusion) environment does not select a connection — it selects a *connection
+profile*, which contains connections.** It is `profiles.yml` hoisted into the UI:
+
+```yaml
+sapsemetov:          # <- connection profile   (what the environment dropdown offers)
+  outputs:
+    snowflake: {...} # <- connection
+    bq:        {...} # <- created at account level in step 5a, invisible until it joins a profile
+```
+
+Creating the connection was necessary and not sufficient: it does not appear anywhere in an
+environment until it is a member of a profile. **A connection also appears to become
+exclusively owned by the profile it joins** — it was selectable while building the new profile
+and gone from the *dev* environment's bare-connection dropdown afterwards, which is the
+observation that cost the most time here. Both environments were on Fusion stable, so engine
+mismatch was not the cause.
+
+**The dev environment was parked, not fixed.** It only feeds the dbt Cloud IDE and Cloud CLI;
+development happens locally against `~/.dbt/profiles.yml`, on BigQuery since Phase 3, and
+Phase 8 deletes the Snowflake connection anyway. If it is ever wanted, delete and recreate it
+so it is born in profile mode. A dev environment holds no run history, so recreating costs
+nothing — unlike a deployment environment, which is why *those* were repointed rather than
+replaced.
+
+Three settings that are blank or wrong by default and each fail silently or confusingly:
+
+| Setting | Value | What the default does |
+|---|---|---|
+| Connection **Location** | `EU` | Blank ⇒ BigQuery assumes the `US` multi-region and *every* query fails `Not found: Dataset … was not found in location US`. All 8 datasets are EU. |
+| Production **Dataset** | `prod` exactly | `schema: snapshots` in `snapshots.yml` is a **suffix on the target dataset**, not an absolute name. `production` would build `production_snapshots.orders_snapshot`, start SCD2 history from zero, and leave the 104 restored rows orphaned in a dataset nothing reads — green build, no error, no failing test. |
+| Maximum bytes billed | `1073741824` (1 GiB) | Unset ⇒ no ceiling. The estate is 3,355 raw rows, so 1 GiB is wildly generous; it exists so a pathological query aborts instead of billing. |
+
+**Source freshness is deliberately OFF, and this is not a migration defect.** Measured
+2026-09-01:
+
+| Source | `loaded_at_field` | max value | age | `error_after` |
+|---|---|---|---|---|
+| `raw_jaffle_shop.orders` | `_etl_loaded_at` | 2026-08-20 07:37:03 | 294 h | 48 h |
+| `raw_stripe.payment` | `_batched_at` | 2026-08-22 03:32:57 | 250 h | 24 h |
+
+Both are 6–12× past `error_after` and will never recover: there is no ingestion pipeline, the
+raw data is a static export. Phase 2 loaded the original timestamps faithfully, which was the
+right call — rewriting them to `current_timestamp()` would have made freshness pass by
+falsifying the one column whose entire purpose is recording when data arrived. Snowflake's job
+must not have run freshness either, or it could not have been "healthy" on 2026-08-29.
+
+**`audit_helper` ordering, revisited for prod.** `compare_all_columns` introspects both
+relations at *compile* time (see Phase 3), and it lives in `analysis/`. `dbt build` skips
+analyses, but **`dbt docs generate` compiles them** — so docs-on-run is safe only because it
+runs *after* build in the same job, by which time `prod.customer_orders_legacy` exists. A
+docs-only run against an empty `prod` would 404. Worth knowing before adding any job step.
+
+**Finding 14 — `macros/grant_select.sql` is dead on BigQuery, and was left alone.**
+`target.role` does not exist on a BigQuery target, and `grant usage on schema` / `grant select
+on all tables in schema` is Snowflake DCL with no BigQuery equivalent. It cannot break
+anything: it is invoked nowhere, there are no `on-run-end`/`post-hook` entries in
+`dbt_project.yml`, and Jinja evaluates macro default arguments at call time rather than at
+parse time. It is course-exercise content, so it stays. `clean_stale_models.sql` uses
+`target.database`, which *is* portable — BigQuery maps `database` → project.
+
+Verified after one manual Production run, before the schedule was enabled:
+
+| Assertion | Result |
+|---|---|
+| `prod` 0 → 11 objects, names identical to `dbt_learning` | PASS |
+| `prod_snapshots.orders_snapshot` still 104 rows / 0 closed / 104 distinct ids | PASS |
+| No `production_snapshots` dataset (suffix trap) — still exactly 8 datasets | PASS |
+| `dbt_updated_at` unchanged at 2026-08-21 12:00:12.958 | PASS — the snapshot ran, found no changed `check_cols`, and touched **zero rows**. That is the proof it appended to the restored table rather than recreating one. |
+
+`check_parity.py` then went from **202/202 across 32 objects** to **274/274 across 43 objects,
+0 problems** — the 11 new `prod` objects all match the Snowflake baseline column-for-column.
+The 8 still-unbuilt objects are both documented categories: `is_holiday_2024` ×2 (the disabled
+Python model) and the 6 stale pre-rename `mesh_dev.stg_*` leftovers.
+
 ## Phase 6 — Restore snapshot history (~45 min, delicate)
 
 `dbt snapshot` cannot produce this — it would create fresh history with one valid-from row.
@@ -704,7 +781,23 @@ captured; the remaining work runs on a schedule of your choosing.
       **202/202 columns across 32 objects, 0 problems — parity clean for every object present**,
       which closes Phase 7's data verification. The plan's predicted `dbt_scd_id` divergence
       **did not occur**: two consecutive `dbt snapshot` runs both left it at 108/4.
-- [ ] Phase 5 (dbt Cloud), Phase 8 (decommission)
+- [x] **Phase 5 complete and verified 2026-09-08** — BigQuery connection (Location `EU`, max bytes
+      billed 1 GiB) added to a new **connection profile**, which is what a Fusion environment
+      actually selects; Production repointed with dataset exactly `prod`; deploy job created as a
+      single `dbt build` with docs-on-run and **source freshness off** (sources are 250–294 h stale
+      against 24–48 h thresholds by design). One manual run passed all 4 assertions, and
+      `check_parity.py` rose to **274/274 columns across 43 objects, 0 problems**. Dev environment
+      deliberately parked. Finding 14: `grant_select.sql` is Snowflake-only and dead, left as
+      course content.
+- [ ] Phase 5 last click — enable `0 6 * * *` on the deploy job (held until the manual run was green)
+- [ ] **Phase 8 (decommission)** — reduced to bookkeeping: the Snowflake trial lapsed ~2026-09-04
+      and cost nothing, because every export was already committed and parity was signed off at
+      202/202 before it expired. Remaining: delete the Snowflake connection + profile from dbt
+      Cloud, decide on `~/.dbt/keys/*.p8`. **Keep `~/.dbt/profiles.yml.snowflake-bak`** — it is the
+      record of what was migrated *from*, which is the artifact wanted when explaining the migration.
+- [ ] **Billing, by ~2026-11-29** — convert to pay-as-you-go **and set the 10 GiB/day query quota in
+      the same action**, not as two steps. The only configuration in this plan where a mistake costs
+      real money.
 
 ### Revised order
 
