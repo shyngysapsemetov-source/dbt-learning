@@ -218,15 +218,144 @@ calls and the failure shows up as a project-wide parse error rather than a runti
 model isn't even the thing that looks broken. Guard on `execute` whenever `run_query` could end
 up on a parse path.
 
+### `--args` can only pass strings, so a Relation has to be built inside the macro
+
+`dbt run-operation find_datatypes --args '{"relation": "fct_orders"}'` fails with
+`JinjaError (dbt1501) … invalid operation: relation must be an object`. `--args` parses YAML/JSON,
+so it yields scalars, lists and dicts — never a `Relation`. But `adapter.get_columns_in_relation()`
+type-checks its argument, because it needs `.database` / `.schema` / `.identifier` to build the
+metadata lookup. A string has none of them, and it raises **before** any SQL is emitted.
+
+The pattern that fixes it is a thin CLI wrapper that does the conversion:
+
+```sql
+{% macro print_datatypes(model_name) %}
+    {{ log(find_datatypes(ref(model_name)), info=True) }}
+{% endmacro %}
+```
+
+Generalises to: **a macro reachable from the shell takes strings; a macro reachable from Jinja
+takes objects.** Keep them as two macros. Use `ref()` rather than `api.Relation.create()` for
+anything in the DAG — `ref()` resolves the active target, so the same command reads dev in dev
+and prod in prod, while `Relation.create()` hardcodes a dataset and silently reads the wrong
+environment. Also note the error names no relation and points at a `:line:col` — that pair is
+the tell for "Jinja/adapter layer", not "warehouse".
+
+### On BigQuery, `col.data_type` drops precision and scale — on Snowflake it didn't
+
+Verified 2026-09-08 against a scratch table, comparing `adapter.get_columns_in_relation` to
+`INFORMATION_SCHEMA.COLUMNS`:
+
+| Declared | `col.data_type` | `INFORMATION_SCHEMA` | |
+|---|---|---|---|
+| `NUMERIC(12, 2)` | `NUMERIC` | `NUMERIC(12, 2)` | lost |
+| `BIGNUMERIC(40, 10)` | `BIGNUMERIC` | `BIGNUMERIC(40, 10)` | lost |
+| `STRING(20)` | `STRING` | `STRING(20)` | lost |
+| `BYTES(5)` | `BYTES` | `BYTES(5)` | lost |
+| `BOOL` | `BOOLEAN` | `BOOL` | alias, not identical |
+| `ARRAY<INT64>` | `ARRAY<INT64>` | same | exact |
+| `STRUCT<a INT64, b STRING>` | `` STRUCT<`a` INT64, `b` STRING> `` | same, unquoted | exact |
+| `JSON` `GEOGRAPHY` `DATETIME` `DATE` `TIME` `INT64` `FLOAT64` | identical | identical | exact |
+
+Nested and repeated structure survives; **parameters do not.** The cause is an adapter
+difference, not a BigQuery one. Snowflake's base `Column.data_type` reconstructs parameters from
+`numeric_precision` / `numeric_scale` / `character_maximum_length`, so it returned `NUMBER(38,2)`
+and `VARCHAR(16777216)`. The BigQuery column class overrides `data_type` to compose the
+`ARRAY<…>` / `STRUCT<…>` wrappers and never consults precision or scale — even though the API
+exposes them.
+
+Why it matters: paste that output into a yml, set `contract: {enforced: true}`, and dbt builds the
+table from the *declared* types, so `NUMERIC(12, 2)` becomes bare `NUMERIC` (38,9) and the scale
+constraint is gone. The contract still passes, because it compares the declaration against a table
+built from that same declaration — circular and green.
+
+`codegen` does **not** save you here. `codegen/macros/vendored/dbt_core/format_column.sql:14-15`
+reads the same `column.data_type`, so dbt Labs' own generator is equally lossy on BigQuery. The
+only exact route is `INFORMATION_SCHEMA.COLUMNS`, which returns the full DDL type string.
+
+The rule: **`col.data_type` gives the type *family*, not the type.** And the wider one — the same
+macro, unchanged, returns less information after a warehouse migration. Nothing fails; the output
+just quietly gets coarser. This is the class of regression a migration parity check on row counts
+will never surface.
+
+*(Measured on Fusion 2.0's Rust adapter; dbt Core's `dbt-bigquery` implements `data_type` the same
+way, but that was reasoned, not run.)*
+
+### `col.dtype` vs `col.data_type` is warehouse-dependent, and `adapter.dispatch` is why
+
+Straight from codegen's source, `macros/vendored/dbt_core/format_column.sql`:
+
+```sql
+{% macro format_column(column) -%}
+  {{ return(adapter.dispatch('format_column', 'codegen')(column)) }}
+{%- endmacro %}
+
+{% macro default__format_column(column) -%}
+  {% set data_type = column.dtype %}          {# Snowflake et al. #}
+  ...
+{% macro bigquery__format_column(column) -%}
+  {% set data_type = column.data_type %}      {# BigQuery #}
+  {% if column.mode.lower() == "repeated" and column.dtype.lower() == "record" %}
+    {% set data_type = "array" %}             {# codegen issue #190 #}
+  {% endif %}
+```
+
+| Attribute | What it is | Right on |
+|---|---|---|
+| `col.dtype` | the raw type label the warehouse reported (`RECORD`, `INTEGER`) | Snowflake — already the full story there |
+| `col.data_type` | the *composed* value, wrapping `ARRAY<…>` / `STRUCT<…>` around `dtype` | BigQuery |
+
+So there is no single correct attribute — which is exactly the condition that justifies
+`adapter.dispatch`. The shape to copy: one bare macro that dispatches, a `default__`
+implementation, and a `<adapter>__` override. **Dispatch earns its indirection when the right
+answer genuinely differs per warehouse, not merely when the syntax does** — a plain macro is
+enough for anything a `case` expression can absorb.
+
+Line 16-18 is also worth remembering on its own: a REPEATED RECORD gets special-cased down to
+plain `array`, because the `ARRAY<STRUCT<…>>` the adapter composes isn't valid in a contract. That
+is a maintained package absorbing an adapter wart on your behalf, and it is the strongest argument
+for a package over a hand-rolled macro — stronger than "less code."
+
+### Reading INFORMATION_SCHEMA instead of the adapter — the trade
+
+`mesh/platform/macros/find_datatypes.sql` was switched off `adapter.get_columns_in_relation()` onto
+a `run_query` against `INFORMATION_SCHEMA.COLUMNS` to recover the parameters. Verified on a scratch
+table, 2026-09-08 — every type now exact, including `bool` rather than the adapter's `BOOLEAN`
+alias:
+
+```
+c_num  ->  numeric(12, 2)      c_arr     ->  array<int64>
+c_str  ->  string(20)          c_struct  ->  struct<a int64, b string>
+```
+
+What it costs, and why it was still the right call for a single-warehouse project:
+
+- **Portability.** `` `project.dataset`.INFORMATION_SCHEMA.COLUMNS `` is BigQuery-shaped. The
+  adapter call was warehouse-agnostic. This is the `object_type` lateral-alias mistake from the
+  `clean_stale_models` gotcha above, made deliberately this time and with a comment saying so.
+- **A round trip to the warehouse** instead of cached relation metadata.
+- **`{% if execute %}` became mandatory.** The adapter version never needed it; the moment
+  `run_query` entered the macro body, a caller from a *model* would hit `None` at parse time. Same
+  lesson as the `run-operation` gotcha below, arrived at from the opposite direction: the guard is a
+  property of *what the macro does*, not of how it happens to be called today.
+- **Row access by name, not index** — `col['data_type']`, not `col[1]` — for the reason in the
+  `.columns[1]` gotcha above. Fusion supports the named form.
+
 ## Open questions
 
-- `adapter.dispatch` is how `dbt_utils` supports many warehouses from one macro name. When is a
-  plain macro genuinely enough, and at what point is dispatch worth the indirection?
+- ~~`adapter.dispatch` is how `dbt_utils` supports many warehouses from one macro name. When is a
+  plain macro genuinely enough, and at what point is dispatch worth the indirection?~~
+  **Answered 2026-09-08** from codegen's `format_column` — see the `dtype` vs `data_type` gotcha
+  above. Dispatch is for when the correct *answer* differs per warehouse, not just the syntax.
 - `dbt_utils.pivot` does what `int_orders__pivoted` hand-rolls. Is a package dependency worth it
   for four columns, or is the explicit loop the better documentation?
 - `codegen` generates YAML. Commit the output as-is, or treat it as scaffold and hand-edit? The
   YAML in this project is hand-written, and the descriptions are the reason.
 - Fusion runs Jinja in Rust, not Python. Which parts of the `run_query()` / agate API are shimmed
-  and which quietly differ?
+  and which quietly differ? *Partial, 2026-09-08:* `run_query(...).rows` works, and rows support
+  **named** access (`row['data_type']`) as well as positional. `adapter.dispatch`,
+  `api.Relation.create`, `exceptions.raise_compiler_error` and `log(info=True)` all behave as in
+  Core. Still unknown: agate's typed-column helpers (`.columns[n].values()` worked, but
+  `agate.Table` methods like `.select()` / aggregations are untested).
 - Sharing `cents_to_dollars` across projects means publishing it as a git package. What does that
   cost in practice versus copying twelve lines?
