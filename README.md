@@ -62,6 +62,7 @@ Numbered to match the course order in the official
 | 9 | Advanced Deployment | ⚪ Not started | [notes](notes/09-advanced-deployment.md) |
 | 10 | Exposures | ⚪ Not started | [notes](notes/10-exposures.md) |
 | 11 | dbt Mesh | 🟢 Complete¹ | [notes](notes/11-dbt-mesh.md) |
+| 12 | Unit Testing | ⚪ Not started | notes pending |
 | — | Certification exam | ⚪ Not started | [notes](notes/99-exam-prep.md) |
 
 Standalone videos on the path, outside the numbered courses:
@@ -69,6 +70,9 @@ Standalone videos on the path, outside the numbered courses:
 | Video | Status | Notes |
 |---|--------|-------|
 | Python Models | 🟢 Complete | [notes](notes/videos/python-models.md) |
+| State / deferral | ⚪ Not started | notes pending |
+| `dbt retry` | ⚪ Not started | notes pending |
+| `dbt clone` | ⚪ Not started | notes pending |
 
 Legend: ⚪ not started · 🟡 in progress · 🟢 complete
 
@@ -78,8 +82,15 @@ Cloud Enterprise. The consumer project reaches the producer as a git **package**
 two-argument `ref()` syntax, no deployment separation. Written up in
 [notes/11](notes/11-dbt-mesh.md).
 
-**Remaining:** 3 of 11 courses — Advanced Testing, Advanced Deployment, Exposures — then the
-exam.
+**Remaining, as three milestones:**
+
+1. **Advanced testing** — courses 8 Advanced Testing, 10 Exposures, 12 Unit Testing, plus the
+   state / `dbt retry` / `dbt clone` videos. Ends the theoretical part.
+2. **Exam preparation**
+3. **Exam registration**
+
+Course 9 Advanced Deployment is unplaced — its subject matter is what the state / retry / clone
+videos cover, so it may have been superseded on the path. Row kept until confirmed.
 
 ## What's in here
 
