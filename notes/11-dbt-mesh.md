@@ -150,16 +150,30 @@ get `fct_orders_v1` (table) and `fct_orders` (table, which **is** v2) — two ob
 relations — a parity check, a `INFORMATION_SCHEMA` audit, an external BI tool's table list —
 sees a different set of objects on each engine.
 
-### The pointer view silently drops NUMERIC precision, so the contract stops applying at the name consumers use
+### The pointer view drops NUMERIC precision — but `ref()` never reads the pointer
 
 `fct_orders_v2` stores `NUMERIC(12, 2)` and `NUMERIC(6, 4)`, exactly as the contract declares.
 The `fct_orders` view over it reports bare `NUMERIC` — precision and scale gone. Same BigQuery
-limitation that forced contracts off the staging layer (`notes/03`), but here it lands on the
-*version pointer*, which is the relation an unpinned consumer reads.
+limitation that forced contracts off the staging layer (`notes/03`).
 
-So on BigQuery + Fusion: **`ref('fct_orders')` gets you the loosest type, `ref('fct_orders',
-v=2)` gets you the contracted one.** The contract is not wrong, it just doesn't survive the
-extra view hop. If declared scale matters to a consumer, pin the version.
+**Who this reaches, verified by reading the compiled SQL rather than assuming:** nobody inside
+dbt. An *unpinned* `{{ ref('core_platform', 'fct_orders') }}` from `jaffle_finance` compiles to
+
+```sql
+select * from `dbt-learning-507213`.`mesh_dev`.`fct_orders_v2`
+```
+
+— the suffixed **table**. `ref()` resolves to the version's own relation whether or not you pass
+`v=`; the pointer view is not in the resolution path at all. So a dbt consumer always gets the
+contracted types, and pinning changes *which version* you read, never how precisely it is typed.
+
+The loss lands only on consumers that reach the bare name outside dbt — a BI tool, a hand-written
+query, an `INFORMATION_SCHEMA` audit. Which is exactly who the pointer exists for, so the group
+that benefits from the stable name is the same group that silently loses the declared scale.
+
+⚠️ `mesh/platform` commit `eef44c2`'s message states this the wrong way round — it claims
+`ref('fct_orders')` gets the loose type. It doesn't. The commit message was written before the
+compiled SQL was read; this section is the correct version.
 
 ### `latest_version: 2` renamed a column, which is a parity divergence by design
 
@@ -167,6 +181,35 @@ v2 renames `order_total` → `order_amount` and casts `location_opened_at` to `D
 Snowflake→BigQuery parity checker therefore reports `fct_orders` as divergent on `ORDER_TOTAL`.
 That is course content doing what course content does, **not** a migration regression — recorded
 in `_migration/PARITY-BASELINE.md` so a future run isn't misread.
+
+### Access across a package boundary: `protected` is not a boundary, `private` is
+
+Measured 2026-09-23 with `jaffle_finance` consuming `core_platform` as a git package. Probed with
+a real model file, not `dbt show --inline`, because an inline node is not a project model and
+might not be subject to the same checks — it wasn't, but that had to be established rather than
+assumed.
+
+| producer model's `access` | ref from the consuming project | result |
+|---|---|---|
+| `public` (`fct_orders`) | `ref('core_platform', 'fct_orders')` | allowed |
+| `protected`, the default (`int_orders`, all six `stg_*`) | `ref('core_platform', 'int_orders')` | **allowed** |
+| `private` to group `product` | same ref | **`AccessDenied (dbt1066)`** |
+
+So **installing a project as a package makes it the same project for access purposes.**
+`protected` means "not reachable by a *cross-project* ref", and a package ref is not that. Which
+means `access: public` on `fct_orders` is **decorative in this setup** — finance could read
+`int_orders`, or any staging view, with nothing to stop it. The governance half of Mesh is the
+half the package route does not reproduce, and this is where that shows up concretely.
+
+`private` is the one modifier that still bites, and it bites harder than expected: it is scoped
+to the **group**, not the project, so marking `int_orders` private to `product` broke
+`fct_orders_v1`, `fct_orders_v2` and `fct_order_items` — **platform's own models** — because they
+aren't in that group either. Four `dbt1066` errors from one line of yml. `private` is for "only
+the models in this group may build on this", not for "keep other projects out".
+
+The practical consequence: if you want a real boundary without Cloud Enterprise, `access:` won't
+give it to you. What does is not shipping the models — a package that exposes only its marts, or
+declaring the producer's outputs as `sources:` in the consumer instead.
 
 ### Generic test arguments must be nested under `arguments:` on Fusion
 
@@ -185,10 +228,8 @@ the flat version.** Same session: `tests:` is renamed `data_tests:`.
 
 ## Open questions
 
-- **Does `access: protected` block a ref from a package?** It definitely blocks a cross-project
-  ref. Whether dbt treats an installed package as "the same project" for access purposes is
-  untested here — verify empirically when `jaffle_finance` installs `core_platform`, because it
-  decides whether `access: public` on `fct_orders` was load-bearing or decorative.
+- ~~**Does `access: protected` block a ref from a package?**~~ **Answered 2026-09-23** — see
+  *Access across a package boundary* below.
 - `fct_order_items` and `dim_product_supplies` still have no `group`, and the `product` group is
   declared and attached to nothing. Which marts belong to which domain is a modelling call, not
   a config one — left open deliberately.
