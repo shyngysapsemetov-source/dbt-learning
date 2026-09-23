@@ -82,12 +82,13 @@ Cloud Enterprise. The consumer project reaches the producer as a git **package**
 two-argument `ref()` syntax, no deployment separation. Written up in
 [notes/11](notes/11-dbt-mesh.md).
 
-**Remaining, as three milestones:**
+**Remaining, as four milestones:**
 
-1. **Advanced testing** — courses 8 Advanced Testing, 10 Exposures, 12 Unit Testing, plus the
-   state / `dbt retry` / `dbt clone` videos. Ends the theoretical part.
-2. **Exam preparation**
-3. **Exam registration**
+1. **Advanced testing** — courses 8 Advanced Testing, 10 Exposures, 12 Unit Testing.
+2. **Deployment videos** — State / deferral, `dbt retry`, `dbt clone`. Taken separately from the
+   courses above, not folded into them. Ends the theoretical part.
+3. **Exam preparation**
+4. **Exam registration**
 
 ² Checked against the learning path on 2026-09-23: **Advanced Deployment is no longer listed**. Its
 subject matter — environments, job scheduling, CI, Slim CI, state comparison, deferral — is what the
