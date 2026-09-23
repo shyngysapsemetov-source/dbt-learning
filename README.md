@@ -59,7 +59,7 @@ Numbered to match the course order in the official
 | 6 | Snapshots | 🟢 Complete | [notes](notes/06-snapshots.md) |
 | 7 | Analyses and Seeds | 🟢 Complete | [notes](notes/07-analyses-and-seeds.md) |
 | 8 | Advanced Testing | ⚪ Not started | [notes](notes/08-advanced-testing.md) |
-| 9 | Advanced Deployment | ⚪ Not started | [notes](notes/09-advanced-deployment.md) |
+| 9 | ~~Advanced Deployment~~ | ⬛ Not on the path² | [notes](notes/09-advanced-deployment.md) |
 | 10 | Exposures | ⚪ Not started | [notes](notes/10-exposures.md) |
 | 11 | dbt Mesh | 🟢 Complete¹ | [notes](notes/11-dbt-mesh.md) |
 | 12 | Unit Testing | ⚪ Not started | notes pending |
@@ -74,7 +74,7 @@ Standalone videos on the path, outside the numbered courses:
 | `dbt retry` | ⚪ Not started | notes pending |
 | `dbt clone` | ⚪ Not started | notes pending |
 
-Legend: ⚪ not started · 🟡 in progress · 🟢 complete
+Legend: ⚪ not started · 🟡 in progress · 🟢 complete · ⬛ no longer on the path
 
 ¹ Taken out of order, before 8–10. Contracts, versions, groups and access modifiers are all
 built and running in `mesh/platform`; **cross-project `ref()` is not**, because it requires dbt
@@ -89,8 +89,11 @@ two-argument `ref()` syntax, no deployment separation. Written up in
 2. **Exam preparation**
 3. **Exam registration**
 
-Course 9 Advanced Deployment is unplaced — its subject matter is what the state / retry / clone
-videos cover, so it may have been superseded on the path. Row kept until confirmed.
+² Checked against the learning path on 2026-09-23: **Advanced Deployment is no longer listed**. Its
+subject matter — environments, job scheduling, CI, Slim CI, state comparison, deferral — is what the
+State / deferral, `dbt retry` and `dbt clone` videos now cover. The row and its stub note are kept
+so the numbering still matches the path as it was when courses 1–8 were taken, and because the exam
+still tests the material. Nothing is owed on it as a course.
 
 ## What's in here
 
