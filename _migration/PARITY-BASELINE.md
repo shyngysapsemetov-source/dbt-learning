@@ -71,6 +71,31 @@ Run the equivalent aggregates on BigQuery, join on
 - The snapshot tables will differ by design — see the migration plan's Phase 6 on the
   `dbt_scd_id` hash, which is expected to add one cosmetic version row per order.
 
+## Post-migration divergences that are course content, not regressions
+
+Appended as they happen, so a later parity run is not misread. The baseline is frozen at the
+Snowflake state of 2026-08-31; anything a course changes *after* the migration will diverge from
+it on purpose.
+
+### 2026-09-23 — `mesh_dev.fct_orders`, from course 11 (dbt Mesh)
+
+`fct_orders` was versioned. Expect all of the following against the baseline, and none of it is
+a migration defect:
+
+- **`ORDER_TOTAL` is absent.** v2 renames it to `order_amount`. v1 still has it, under
+  `fct_orders_v1`.
+- **`LOCATION_OPENED_AT` changed type**, `TIMESTAMP` → `DATE`, in v2 only.
+- **The object set changed.** Baseline has one `fct_orders`. BigQuery now has `fct_orders_v1`
+  (table), `fct_orders_v2` (table) and `fct_orders` (**view**, Fusion's latest-version pointer —
+  dbt Core would not create this third object). A checker that joins on table name will match the
+  view, not either table.
+- **`full_type` on the view reports bare `NUMERIC`**, no precision, even though the contract
+  declares `numeric(12, 2)` and the underlying v2 table honours it. BigQuery views cannot carry
+  `NUMERIC(p, s)` — the same limitation already recorded for the staging layer.
+
+`n_rows` / `n_distinct` on `ORDER_ID` should still match exactly. If those move, that *is* a
+real defect.
+
 ## Reproducing
 
 Needs `~/.dbt/sf_query.py` (outside every repo, since its job is reading credentials) plus

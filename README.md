@@ -61,7 +61,7 @@ Numbered to match the course order in the official
 | 8 | Advanced Testing | ⚪ Not started | [notes](notes/08-advanced-testing.md) |
 | 9 | Advanced Deployment | ⚪ Not started | [notes](notes/09-advanced-deployment.md) |
 | 10 | Exposures | ⚪ Not started | [notes](notes/10-exposures.md) |
-| 11 | dbt Mesh | ⚪ Not started | [notes](notes/11-dbt-mesh.md) |
+| 11 | dbt Mesh | 🟢 Complete¹ | [notes](notes/11-dbt-mesh.md) |
 | — | Certification exam | ⚪ Not started | [notes](notes/99-exam-prep.md) |
 
 Standalone videos on the path, outside the numbered courses:
@@ -72,8 +72,14 @@ Standalone videos on the path, outside the numbered courses:
 
 Legend: ⚪ not started · 🟡 in progress · 🟢 complete
 
-**Remaining:** 4 of 11 courses — Advanced Testing, Advanced Deployment, Exposures,
-dbt Mesh — then the exam.
+¹ Taken out of order, before 8–10. Contracts, versions, groups and access modifiers are all
+built and running in `mesh/platform`; **cross-project `ref()` is not**, because it requires dbt
+Cloud Enterprise. The consumer project reaches the producer as a git **package** instead — same
+two-argument `ref()` syntax, no deployment separation. Written up in
+[notes/11](notes/11-dbt-mesh.md).
+
+**Remaining:** 3 of 11 courses — Advanced Testing, Advanced Deployment, Exposures — then the
+exam.
 
 ## What's in here
 
