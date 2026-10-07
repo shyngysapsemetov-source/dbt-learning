@@ -125,7 +125,7 @@ and the `schema: snapshots` → `dbt_learning_snapshots` suffixing is dbt's own
 
 1. Create GCP project; enable the BigQuery API.
 2. Service account with **BigQuery Data Editor** + **BigQuery Job User** at project level.
-3. JSON key → `~/.dbt/keys/bq_dbt_sa.json` (same dir as the Snowflake keys, already
+3. JSON key → `~/.dbt/keys/<service-account-key>.json` (same dir as the Snowflake keys, already
    outside the public repo).
 4. Create **all 8 datasets** from the table above — `raw_jaffle_shop`, `raw_stripe`,
    `raw_mesh_jaffle_shop`, `dbt_learning`, `dbt_learning_snapshots`, `prod`, `prod_snapshots`,
@@ -148,7 +148,7 @@ IAM roles (a 403 on the first `dbt run`).
 
 The GCP organization enforces `iam.disableServiceAccountKeyCreation` (Google's "Secure by
 Default"), which blocked service-account key creation. **Resolved by overriding the constraint
-at project scope only** — the key now exists at `~/.dbt/keys/bq_dbt_sa.json` with Data Editor +
+at project scope only** — the key now exists at `~/.dbt/keys/<service-account-key>.json` with Data Editor +
 Job User, and the policy stays enforced everywhere else in the org, permanently.
 
 Three wrong turns, each worth remembering because each cost a round trip:
@@ -178,7 +178,7 @@ exchange for the ability to replace a key suspected of being compromised.
 The keyless path (three files, all committed):
 
 - `bq_creds.py` — one loader every script authenticates through. Prefers
-  `~/.dbt/keys/bq_dbt_sa.json` if it ever exists, falls back to `~/.dbt/keys/bq_oauth.json`.
+  `~/.dbt/keys/<service-account-key>.json` if it ever exists, falls back to `~/.dbt/keys/bq_oauth.json`.
   Nothing else in the migration had to change to accommodate the policy.
 - `bq_oauth_setup.py` — one-time browser consent, writes the refresh token. Requires an
   OAuth 2.0 **Desktop app** client, which the policy does *not* govern.
@@ -269,7 +269,7 @@ default:
     bq:
       type: bigquery
       method: service-account
-      keyfile: C:/Users/ashyngys/.dbt/keys/bq_dbt_sa.json
+      keyfile: ~/.dbt/keys/<service-account-key>.json
       project: <gcp-project-id>
       dataset: dbt_learning
       location: EU
@@ -444,7 +444,7 @@ The plan said "new BigQuery connection … recreate both environments". That is 
 profile*, which contains connections.** It is `profiles.yml` hoisted into the UI:
 
 ```yaml
-sapsemetov:          # <- connection profile   (what the environment dropdown offers)
+<profile>:          # <- connection profile   (what the environment dropdown offers)
   outputs:
     snowflake: {...} # <- connection
     bq:        {...} # <- created at account level in step 5a, invisible until it joins a profile
@@ -801,7 +801,7 @@ Kept deliberately: `~/.dbt/profiles.yml.snowflake-bak` and `profiles.yml.pre-pha
 what was migrated from), and `~/.dbt/sf_query.py` as the template for a BigQuery
 equivalent.
 
-`~/.dbt/keys/` now holds exactly one file, `bq_dbt_sa.json`. The live `profiles.yml` has
+`~/.dbt/keys/` now holds exactly one file, `<service-account-key>.json`. The live `profiles.yml` has
 both `default` and `mesh` on BigQuery with no Snowflake target anywhere.
 
 **Not done, deliberately, against this plan's own instruction:** `snowflake` was **kept** in

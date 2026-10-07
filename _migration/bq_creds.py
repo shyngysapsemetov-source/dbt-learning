@@ -5,7 +5,7 @@ Two auth paths exist because the org policy `iam.disableServiceAccountKeyCreatio
 blocked service-account key creation on 2026-08-31/09-01. Rather than let that decide the
 whole migration, the scripts accept either credential and prefer whichever is present:
 
-  1. Service-account keyfile  ~/.dbt/keys/bq_dbt_sa.json    (if the policy is ever lifted)
+  1. Service-account keyfile  ~/.dbt/keys/<service-account-key>.json    (if the policy is ever lifted)
   2. User OAuth refresh token ~/.dbt/keys/bq_oauth.json     (keyless, works under the policy)
 
 Both files live in ~/.dbt/keys/, outside every git repo. Nothing here reads from the repo.

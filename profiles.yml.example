@@ -16,8 +16,8 @@
 #        roles/bigquery.dataEditor
 #        roles/bigquery.jobUser
 #        roles/bigquery.readSessionUser    <-- see below
-#   3. Create a JSON key and save it as ~/.dbt/keys/bq_dbt_sa.json
-#      chmod 600 ~/.dbt/keys/bq_dbt_sa.json
+#   3. Create a JSON key and save it as ~/.dbt/keys/<service-account-key>.json
+#      chmod 600 ~/.dbt/keys/<service-account-key>.json
 #
 # **readSessionUser is required by dbt Fusion and NOT by dbt Core**, which is why
 # every tutorial names only the first two. Fusion fetches results over the BigQuery
